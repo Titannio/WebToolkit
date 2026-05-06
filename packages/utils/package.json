@@ -1,0 +1,268 @@
+{
+  "name": "webtoolkit-utils",
+  "version": "0.7.1",
+  "private": false,
+  "description": "Typed utility toolkit for TypeScript projects with explicit entrypoints for browser, server, framework, database, and country modules.",
+  "keywords": [
+    "utilities",
+    "typescript",
+    "toolkit",
+    "browser",
+    "react",
+    "node",
+    "mongodb"
+  ],
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/public/index.js",
+  "types": "./dist/public/index.d.ts",
+  "sideEffects": false,
+  "files": [
+    "dist/**/*",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/public/index.d.ts",
+      "import": "./dist/public/index.js",
+      "default": "./dist/public/index.js"
+    },
+    "./async": {
+      "types": "./dist/async/index.d.ts",
+      "import": "./dist/async/index.js",
+      "default": "./dist/async/index.js"
+    },
+    "./browser": {
+      "types": "./dist/browser/index.d.ts",
+      "import": "./dist/browser/index.js",
+      "default": "./dist/browser/index.js"
+    },
+    "./browser/media": {
+      "types": "./dist/browser/media/index.d.ts",
+      "import": "./dist/browser/media/index.js",
+      "default": "./dist/browser/media/index.js"
+    },
+    "./browser/files": {
+      "types": "./dist/browser/files/index.d.ts",
+      "import": "./dist/browser/files/index.js",
+      "default": "./dist/browser/files/index.js"
+    },
+    "./core": {
+      "types": "./dist/core/index.d.ts",
+      "import": "./dist/core/index.js",
+      "default": "./dist/core/index.js"
+    },
+    "./countries": {
+      "types": "./dist/countries/index.d.ts",
+      "import": "./dist/countries/index.js",
+      "default": "./dist/countries/index.js"
+    },
+    "./countries/BR": {
+      "types": "./dist/countries/BR/index.d.ts",
+      "import": "./dist/countries/BR/index.js",
+      "default": "./dist/countries/BR/index.js"
+    },
+    "./data": {
+      "types": "./dist/data/index.d.ts",
+      "import": "./dist/data/index.js",
+      "default": "./dist/data/index.js"
+    },
+    "./database/mongodb": {
+      "types": "./dist/database/mongodb/index.d.ts",
+      "import": "./dist/database/mongodb/index.js",
+      "default": "./dist/database/mongodb/index.js"
+    },
+    "./dates": {
+      "types": "./dist/dates/index.d.ts",
+      "import": "./dist/dates/index.js",
+      "default": "./dist/dates/index.js"
+    },
+    "./files": {
+      "types": "./dist/files/index.d.ts",
+      "import": "./dist/files/index.js",
+      "default": "./dist/files/index.js"
+    },
+    "./finance": {
+      "types": "./dist/finance/index.d.ts",
+      "import": "./dist/finance/index.js",
+      "default": "./dist/finance/index.js"
+    },
+    "./frameworks/react": {
+      "types": "./dist/frameworks/react/index.d.ts",
+      "import": "./dist/frameworks/react/index.js",
+      "default": "./dist/frameworks/react/index.js"
+    },
+    "./frameworks/mantine": {
+      "types": "./dist/frameworks/mantine/index.d.ts",
+      "import": "./dist/frameworks/mantine/index.js",
+      "default": "./dist/frameworks/mantine/index.js"
+    },
+    "./geo": {
+      "types": "./dist/geo/index.d.ts",
+      "import": "./dist/geo/index.js",
+      "default": "./dist/geo/index.js"
+    },
+    "./network": {
+      "types": "./dist/network/index.d.ts",
+      "import": "./dist/network/index.js",
+      "default": "./dist/network/index.js"
+    },
+    "./numbers": {
+      "types": "./dist/numbers/index.d.ts",
+      "import": "./dist/numbers/index.js",
+      "default": "./dist/numbers/index.js"
+    },
+    "./pagination": {
+      "types": "./dist/pagination/index.d.ts",
+      "import": "./dist/pagination/index.js",
+      "default": "./dist/pagination/index.js"
+    },
+    "./privacy": {
+      "types": "./dist/privacy/index.d.ts",
+      "import": "./dist/privacy/index.js",
+      "default": "./dist/privacy/index.js"
+    },
+    "./random": {
+      "types": "./dist/random/index.d.ts",
+      "import": "./dist/random/index.js",
+      "default": "./dist/random/index.js"
+    },
+    "./runtime": {
+      "types": "./dist/runtime/index.d.ts",
+      "import": "./dist/runtime/index.js",
+      "default": "./dist/runtime/index.js"
+    },
+    "./runtime/cache": {
+      "types": "./dist/runtime/cache/index.d.ts",
+      "import": "./dist/runtime/cache/index.js",
+      "default": "./dist/runtime/cache/index.js"
+    },
+    "./runtime/cli": {
+      "types": "./dist/runtime/cli/index.d.ts",
+      "import": "./dist/runtime/cli/index.js",
+      "default": "./dist/runtime/cli/index.js"
+    },
+    "./search": {
+      "types": "./dist/search/index.d.ts",
+      "import": "./dist/search/index.js",
+      "default": "./dist/search/index.js"
+    },
+    "./security": {
+      "types": "./dist/security/index.d.ts",
+      "import": "./dist/security/index.js",
+      "default": "./dist/security/index.js"
+    },
+    "./security/jwt": {
+      "types": "./dist/security/jwt/index.d.ts",
+      "import": "./dist/security/jwt/index.js",
+      "default": "./dist/security/jwt/index.js"
+    },
+    "./server": {
+      "types": "./dist/server/index.d.ts",
+      "import": "./dist/server/index.js",
+      "default": "./dist/server/index.js"
+    },
+    "./server/http": {
+      "types": "./dist/server/http/index.d.ts",
+      "import": "./dist/server/http/index.js",
+      "default": "./dist/server/http/index.js"
+    },
+    "./server/media": {
+      "types": "./dist/server/media/index.d.ts",
+      "import": "./dist/server/media/index.js",
+      "default": "./dist/server/media/index.js"
+    },
+    "./server/security": {
+      "types": "./dist/server/security/index.d.ts",
+      "import": "./dist/server/security/index.js",
+      "default": "./dist/server/security/index.js"
+    },
+    "./text": {
+      "types": "./dist/text/index.d.ts",
+      "import": "./dist/text/index.js",
+      "default": "./dist/text/index.js"
+    },
+    "./types": {
+      "types": "./dist/types/index.d.ts",
+      "import": "./dist/types/index.js",
+      "default": "./dist/types/index.js"
+    },
+    "./ui": {
+      "types": "./dist/ui/index.d.ts",
+      "import": "./dist/ui/index.js",
+      "default": "./dist/ui/index.js"
+    },
+    "./validation": {
+      "types": "./dist/validation/index.d.ts",
+      "import": "./dist/validation/index.js",
+      "default": "./dist/validation/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "build": "npm run clean && tsc -p tsconfig.build.json",
+    "type-check": "tsc --noEmit",
+    "clean": "rimraf dist .tsbuildinfo",
+    "lint": "eslint src tests",
+    "lint:fix": "eslint src tests --fix",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "prepack": "npm run build"
+  },
+  "peerDependencies": {
+    "express": "^5.1.0",
+    "mongoose": "^9.4.1",
+    "react": ">=18.0.0",
+    "sharp": "^0.33.0 || ^0.34.0"
+  },
+  "peerDependenciesMeta": {
+    "express": {
+      "optional": true
+    },
+    "mongoose": {
+      "optional": true
+    },
+    "react": {
+      "optional": true
+    },
+    "sharp": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@testing-library/react": "^16.3.2",
+    "@types/express": "^5.0.6",
+    "@types/node": "^25.6.0",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@vitest/coverage-v8": "^4.1.5",
+    "eslint": "^10.2.1",
+    "express": "^5.1.0",
+    "jsdom": "^29.0.2",
+    "mongoose": "^9.4.1",
+    "react": "^19.2.5",
+    "react-dom": "^19.2.5",
+    "rimraf": "^6.0.1",
+    "sharp": "^0.34.5",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.58.2",
+    "vitest": "^4.1.5"
+  },
+  "dependencies": {
+    "clsx": "^2.1.1",
+    "date-fns": "^4.1.0",
+    "es-toolkit": "^1.45.1",
+    "remeda": "^2.33.7",
+    "tailwind-merge": "^3.5.0",
+    "zod": "^4.3.6"
+  }
+}
