@@ -1,6 +1,6 @@
 {
   "name": "webtoolkit-utils",
-  "version": "0.7.2",
+  "version": "0.7.3",
   "private": false,
   "description": "Typed utility toolkit for TypeScript projects with explicit entrypoints for browser, server, framework, database, and country modules.",
   "keywords": [
@@ -265,6 +265,6 @@
     "es-toolkit": "^1.45.1",
     "remeda": "^2.33.7",
     "tailwind-merge": "^3.5.0",
-    "zod": "^4.3.6"
+    "zod": "^4.4.3"
   }
 }
