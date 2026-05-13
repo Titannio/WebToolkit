@@ -1,6 +1,6 @@
 {
   "name": "webtoolkit-utils",
-  "version": "0.7.1",
+  "version": "0.7.2",
   "private": false,
   "description": "Typed utility toolkit for TypeScript projects with explicit entrypoints for browser, server, framework, database, and country modules.",
   "keywords": [
@@ -215,7 +215,9 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "prepack": "npm run build"
+    "prepack": "npm run build",
+    "npm:update": "npm update",
+    "npm:release": "npm publish"
   },
   "peerDependencies": {
     "express": "^5.1.0",
