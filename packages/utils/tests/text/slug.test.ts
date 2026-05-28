@@ -13,6 +13,7 @@ describe('slug utils', () => {
     expect(toSlug('Maria  José')).toBe('maria-jose')
     expect(toSlug('João (Silva) Santos!')).toBe('joao-silva-santos')
     expect(toSlug('João Silva 2')).toBe('joao-silva-2')
+    expect(toSlug('Maria@Silva#2024')).toBe('maria-silva-2024')
   })
 
   it('returns an empty string when no slug token remains', () => {

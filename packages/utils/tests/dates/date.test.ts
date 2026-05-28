@@ -12,7 +12,16 @@ import {
   toStartOfDay,
   toEndOfDay,
   isOverlapping,
-  parseTimeToMinutes
+  parseTimeToMinutes,
+  minutesToTime,
+  isLocalDate,
+  addDaysToLocalDate,
+  zonedLocalDateTimeToUtc,
+  getCurrentMonthValue,
+  addMonthsToMonthValue,
+  getMaxMonthValue,
+  isMonthBeyondHorizon,
+  isLocalDateBeyondMonthHorizon,
 } from '@src/dates/date.js'
 
 describe('Date Utilities', () => {
@@ -23,6 +32,43 @@ describe('Date Utilities', () => {
       expect(parseTimeToMinutes('23:59')).toBe(1439)
     })
   })
+
+  describe('civil date and time helpers', () => {
+    it('should convert minutes to HH:mm', () => {
+      expect(minutesToTime(0)).toBe('00:00')
+      expect(minutesToTime(510)).toBe('08:30')
+      expect(minutesToTime(1439)).toBe('23:59')
+    })
+
+    it('should validate local date strings', () => {
+      expect(isLocalDate('2026-06-01')).toBe(true)
+      expect(isLocalDate('2026-02-30')).toBe(false)
+      expect(isLocalDate('2026-6-1')).toBe(false)
+      expect(isLocalDate(undefined)).toBe(false)
+    })
+
+    it('should add civil days to local date strings', () => {
+      expect(addDaysToLocalDate('2026-06-01', 1)).toBe('2026-06-02')
+      expect(addDaysToLocalDate('2026-12-31', 1)).toBe('2027-01-01')
+      expect(addDaysToLocalDate('2026-01-01', -1)).toBe('2025-12-31')
+    })
+
+    it('should convert zoned local date times to UTC instants', () => {
+      expect(zonedLocalDateTimeToUtc('2026-06-01', '00:00', 'America/Sao_Paulo').toISOString()).toBe('2026-06-01T03:00:00.000Z')
+      expect(zonedLocalDateTimeToUtc('2026-06-01', '00:00', 'America/New_York').toISOString()).toBe('2026-06-01T04:00:00.000Z')
+    })
+
+    it('should handle timezone-aware month horizons', () => {
+      const now = new Date('2026-12-31T23:30:00.000Z')
+      expect(getCurrentMonthValue('UTC', now)).toBe('2026-12')
+      expect(getCurrentMonthValue('Pacific/Kiritimati', now)).toBe('2027-01')
+      expect(addMonthsToMonthValue('2026-12', 2)).toBe('2027-02')
+      expect(getMaxMonthValue(2, 'UTC', now)).toBe('2027-02')
+      expect(isMonthBeyondHorizon('2027-03', 2, 'UTC', now)).toBe(true)
+      expect(isLocalDateBeyondMonthHorizon('2027-02-28', 2, 'UTC', now)).toBe(false)
+    })
+  })
+
   describe('calculateAhead', () => {
     it('should calculate date ahead correctly', () => {
       const base = new Date(2023, 0, 1) // Jan 1st

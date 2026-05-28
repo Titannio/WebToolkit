@@ -326,6 +326,158 @@ export function parseTimeToMinutes(value: string): number {
 }
 
 /**
+ * Converts total minutes from the start of the day into an HH:mm string.
+ *
+ * @param {number} minutes - Total minutes.
+ * @returns {string} Time string in HH:mm format.
+ *
+ * @example
+ * minutesToTime(510) // returns '08:30'
+ */
+export function minutesToTime(minutes: number): string {
+  return `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`
+}
+
+/**
+ * Checks whether a value is a valid ISO local date string (YYYY-MM-DD).
+ *
+ * @param {unknown} value - Candidate value.
+ * @returns {value is string} True when the value is a valid local date.
+ */
+export function isLocalDate(value: unknown): value is string {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false
+  const [year, month, day] = value.split('-').map(Number)
+  const date = new Date(year, month - 1, day)
+  return date.getFullYear() === year
+    && date.getMonth() === month - 1
+    && date.getDate() === day
+}
+
+/**
+ * Builds a YYYY-MM-DD string offset by civil days.
+ *
+ * @param {string} localDate - Base local date.
+ * @param {number} daysToAdd - Civil days to add.
+ * @returns {string} Shifted local date.
+ */
+export function addDaysToLocalDate(localDate: string, daysToAdd: number): string {
+  const [year, month, day] = localDate.split('-').map(Number)
+  const shifted = new Date(Date.UTC(year, month - 1, day + daysToAdd))
+  return `${shifted.getUTCFullYear()}-${String(shifted.getUTCMonth() + 1).padStart(2, '0')}-${String(shifted.getUTCDate()).padStart(2, '0')}`
+}
+
+/**
+ * Converts a local date/time in an IANA timezone to a UTC instant.
+ *
+ * @param {string} localDate - Local date in YYYY-MM-DD format.
+ * @param {string} localTime - Local time in HH:mm format.
+ * @param {string} timezone - IANA timezone.
+ * @returns {Date} UTC instant.
+ */
+export function zonedLocalDateTimeToUtc(localDate: string, localTime: string, timezone: string): Date {
+  const [year, month, day] = localDate.split('-').map(Number)
+  const [hour, minute] = localTime.split(':').map(Number)
+  const utcGuess = Date.UTC(year, month - 1, day, hour, minute, 0, 0)
+  const formatter = new Intl.DateTimeFormat('en-US', {
+    timeZone: timezone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hourCycle: 'h23',
+  })
+  const parts = Object.fromEntries(formatter.formatToParts(new Date(utcGuess)).map((part) => [part.type, part.value]))
+  const zonedAsUtc = Date.UTC(
+    Number(parts.year),
+    Number(parts.month) - 1,
+    Number(parts.day),
+    Number(parts.hour),
+    Number(parts.minute),
+    Number(parts.second),
+  )
+  return new Date(utcGuess - (zonedAsUtc - utcGuess))
+}
+
+/**
+ * Gets the current civil month for one timezone in YYYY-MM format.
+ *
+ * @param {string} timezone - Reference timezone.
+ * @param {Date} [now] - Optional current instant override.
+ * @returns {string} Current month value.
+ */
+export function getCurrentMonthValue(timezone: string, now = new Date()): string {
+  const parts = Object.fromEntries(new Intl.DateTimeFormat('en-US', {
+    timeZone: timezone,
+    year: 'numeric',
+    month: '2-digit',
+  }).formatToParts(now).map((part) => [part.type, part.value]))
+  return `${parts.year}-${parts.month}`
+}
+
+/**
+ * Adds civil months to a YYYY-MM month value.
+ *
+ * @param {string} monthValue - Base month value.
+ * @param {number} monthsToAdd - Number of months to add.
+ * @returns {string} Result month value.
+ */
+export function addMonthsToMonthValue(monthValue: string, monthsToAdd: number): string {
+  const [year, month] = monthValue.split('-').map(Number)
+  const result = new Date(Date.UTC(year, month - 1 + monthsToAdd, 1))
+  return `${result.getUTCFullYear()}-${String(result.getUTCMonth() + 1).padStart(2, '0')}`
+}
+
+/**
+ * Gets the maximum civil month allowed by a month-ahead horizon.
+ *
+ * @param {number} maxMonthsAhead - Horizon size.
+ * @param {string} timezone - Reference timezone.
+ * @param {Date} [now] - Optional current instant override.
+ * @returns {string} Maximum allowed month value.
+ */
+export function getMaxMonthValue(maxMonthsAhead: number, timezone: string, now = new Date()): string {
+  return addMonthsToMonthValue(getCurrentMonthValue(timezone, now), maxMonthsAhead)
+}
+
+/**
+ * Checks whether a YYYY-MM month value is beyond a month-ahead horizon.
+ *
+ * @param {string} monthValue - Candidate month.
+ * @param {number} maxMonthsAhead - Horizon size.
+ * @param {string} timezone - Reference timezone.
+ * @param {Date} [now] - Optional current instant override.
+ * @returns {boolean} True when month is beyond the horizon.
+ */
+export function isMonthBeyondHorizon(
+  monthValue: string,
+  maxMonthsAhead: number,
+  timezone: string,
+  now = new Date(),
+): boolean {
+  return monthValue > getMaxMonthValue(maxMonthsAhead, timezone, now)
+}
+
+/**
+ * Checks whether a local date is beyond a month-ahead horizon.
+ *
+ * @param {string} localDate - Candidate local date in YYYY-MM-DD format.
+ * @param {number} maxMonthsAhead - Horizon size.
+ * @param {string} timezone - Reference timezone.
+ * @param {Date} [now] - Optional current instant override.
+ * @returns {boolean} True when date is beyond the horizon month.
+ */
+export function isLocalDateBeyondMonthHorizon(
+  localDate: string,
+  maxMonthsAhead: number,
+  timezone: string,
+  now = new Date(),
+): boolean {
+  return isMonthBeyondHorizon(localDate.slice(0, 7), maxMonthsAhead, timezone, now)
+}
+
+/**
  * Converts a date input into a standard ISO 8601 string.
  * 
  * @param {DateInput | undefined | null} v - The date to format.
