@@ -139,7 +139,7 @@ async function main(): Promise<void> {
       printGuardHelp()
       return
     }
-    runBuiltinGuard(guardName, guardArgs, workspaceRoot)
+    runBuiltinGuard(guardName, guardArgs, process.cwd())
     return
   }
 

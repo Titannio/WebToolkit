@@ -35,14 +35,31 @@ export function buildPackageManagerCommand(packageManager: string, args: string[
   }
 }
 
-function resolveExecutable(command: string): string {
-  if (process.platform !== 'win32') return command
-  if (command === 'pnpm' || command === 'npm' || command === 'yarn' || command === 'webtoolkit') return `${command}.cmd`
-  return command
+const WINDOWS_CMD_WRAPPED_COMMANDS = new Set([
+  'npm',
+  'npm.cmd',
+  'pnpm',
+  'pnpm.cmd',
+  'webtoolkit',
+  'webtoolkit.cmd',
+  'yarn',
+  'yarn.cmd',
+])
+
+export function resolveSpawnSpec(command: string, args: string[] = []): { command: string; args: string[] } {
+  if (process.platform !== 'win32') return { command, args }
+
+  if (!WINDOWS_CMD_WRAPPED_COMMANDS.has(command)) return { command, args }
+
+  return {
+    command: process.env.ComSpec ?? 'cmd.exe',
+    args: ['/d', '/s', '/c', command.replace(/\.cmd$/iu, ''), ...args],
+  }
 }
 
 export function runCommandBuffered(spec: CommandSpec, rootDir: string): Promise<CommandResult> {
-  const child = spawn(resolveExecutable(spec.command), spec.args ?? [], {
+  const resolved = resolveSpawnSpec(spec.command, spec.args ?? [])
+  const child = spawn(resolved.command, resolved.args, {
     cwd: resolveCwd(rootDir, spec.cwd),
     env: {
       ...process.env,
@@ -68,7 +85,8 @@ export function runCommandBuffered(spec: CommandSpec, rootDir: string): Promise<
 }
 
 export function runCommandInherited(spec: CommandSpec, rootDir: string): number {
-  const result = spawnSync(resolveExecutable(spec.command), spec.args ?? [], {
+  const resolved = resolveSpawnSpec(spec.command, spec.args ?? [])
+  const result = spawnSync(resolved.command, resolved.args, {
     cwd: resolveCwd(rootDir, spec.cwd),
     env: {
       ...process.env,

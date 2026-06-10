@@ -1,17 +1,11 @@
 import { spawn } from 'node:child_process'
 import path from 'node:path'
 
-import type { TaskConfig, TaskStepConfig, WebToolkitCliConfig } from './config.js'
+import type { TaskConfig, TaskOutputMode, TaskStepConfig, WebToolkitCliConfig } from './config.js'
 
 type Runtime = {
   cwd: string
   config: WebToolkitCliConfig
-}
-
-type TaskResult = {
-  label: string
-  status: 'OK' | 'FAIL' | 'SKIP'
-  durationMs: number
 }
 
 const taskAliases: Record<string, string> = {
@@ -51,16 +45,38 @@ function resolveCommand(step: TaskStepConfig, args: string[]): { command: string
   }
 
   return {
-    command: 'cmd.exe',
+    command: process.env.ComSpec ?? 'cmd.exe',
     args: ['/d', '/s', '/c', step.command, ...args],
     shell: false,
   }
 }
 
-function runStep(step: TaskStepConfig, runtime: Runtime, passthroughArgs: string[]): Promise<{ code: number; output: string }> {
+function colorizeResult(status: 'OK' | 'FALHA' | 'SKIP'): string {
+  if (status === 'OK') return `\x1b[32m${status}\x1b[0m`
+  if (status === 'FALHA') return `\x1b[31m${status}\x1b[0m`
+  return `\x1b[90m${status}\x1b[0m`
+}
+
+export function formatTaskStatusLine(options: {
+  action: string
+  label: string
+  status?: 'OK' | 'FALHA' | 'SKIP'
+  durationMs?: number
+}): string {
+  const duration = options.durationMs === undefined ? '' : ` (${formatDuration(options.durationMs)})`
+  const status = options.status === undefined ? '' : ` ${colorizeResult(options.status)}${duration}`
+
+  return `- ${options.action} \x1b[1m${options.label.padEnd(16)}\x1b[0m...${status}`
+}
+
+function getStepAction(step: TaskStepConfig): string {
+  return step.args?.includes('build') ? 'Building' : 'Running'
+}
+
+function runStep(step: TaskStepConfig, runtime: Runtime, passthroughArgs: string[], defaultOutputMode: TaskOutputMode): Promise<{ code: number; output: string }> {
   const args = [...(step.args ?? []), ...(step.appendArgs ? normalizePassthroughArgs(passthroughArgs) : [])]
   const resolved = resolveCommand(step, args)
-  const outputMode = step.outputMode ?? 'inherit'
+  const outputMode = step.outputMode ?? defaultOutputMode
   const child = spawn(resolved.command, resolved.args, {
     cwd: resolveWorkingDirectory(runtime, step),
     env: {
@@ -87,15 +103,6 @@ function runStep(step: TaskStepConfig, runtime: Runtime, passthroughArgs: string
     child.on('error', reject)
     child.on('close', (code) => resolve({ code: code ?? 1, output }))
   })
-}
-
-function printSummary(results: TaskResult[]): void {
-  console.info('')
-  console.info('Summary')
-  for (const result of results) {
-    console.info(` - ${result.status.padEnd(4)} ${result.label} (${formatDuration(result.durationMs)})`)
-  }
-  console.info('')
 }
 
 export function resolveTaskName(command: string): string | null {
@@ -144,39 +151,72 @@ export async function runTask(taskName: string, runtime: Runtime, passthroughArg
   }
 
   const failFast = task.failFast ?? true
-  const results: TaskResult[] = []
+  const defaultOutputMode = task.outputMode ?? 'inherit'
   let hasFailure = false
 
   console.info(task.title ?? `Running task: ${taskName}`)
 
   for (const step of task.steps) {
+    const stepOutputMode = step.outputMode ?? defaultOutputMode
     if (hasFailure && failFast) {
-      results.push({ label: step.label, status: 'SKIP', durationMs: 0 })
+      console.info(formatTaskStatusLine({
+        action: getStepAction(step),
+        label: step.label,
+        status: 'SKIP',
+        durationMs: 0,
+      }))
       continue
     }
 
-    console.info('')
-    console.info(`> ${step.label}`)
-    console.info(`$ ${step.command ?? '<builtin>'} ${[...(step.args ?? []), ...(step.appendArgs ? normalizePassthroughArgs(passthroughArgs) : [])].join(' ')}`.trim())
+    const startLine = formatTaskStatusLine({
+      action: getStepAction(step),
+      label: step.label,
+    })
+    if (stepOutputMode === 'buffered') {
+      process.stdout.write(startLine)
+    } else {
+      console.info('')
+      console.info(startLine)
+      console.info(`> ${step.label}`)
+      console.info(`$ ${step.command ?? '<builtin>'} ${[...(step.args ?? []), ...(step.appendArgs ? normalizePassthroughArgs(passthroughArgs) : [])].join(' ')}`.trim())
+    }
 
     const startedAt = Date.now()
-    const outcome = await runStep(step, runtime, passthroughArgs)
+    const outcome = await runStep(step, runtime, passthroughArgs, defaultOutputMode)
     const durationMs = Date.now() - startedAt
 
     if (outcome.code === 0) {
-      results.push({ label: step.label, status: 'OK', durationMs })
+      const completedLine = formatTaskStatusLine({
+        action: getStepAction(step),
+        label: step.label,
+        status: 'OK',
+        durationMs,
+      })
+      if (stepOutputMode === 'buffered') {
+        console.info(` ${colorizeResult('OK')} (${formatDuration(durationMs)})`)
+      } else {
+        console.info(completedLine)
+      }
       continue
     }
 
     hasFailure = true
-    results.push({ label: step.label, status: 'FAIL', durationMs })
+    const failedLine = formatTaskStatusLine({
+      action: getStepAction(step),
+      label: step.label,
+      status: 'FALHA',
+      durationMs,
+    })
+    if (stepOutputMode === 'buffered') {
+      console.info(` ${colorizeResult('FALHA')} (${formatDuration(durationMs)})`)
+    } else {
+      console.info(failedLine)
+    }
     if (outcome.output.trim()) {
       console.info('')
       console.info(outcome.output.trim())
     }
   }
-
-  printSummary(results)
 
   if (hasFailure) {
     throw new Error(`Task "${taskName}" failed.`)

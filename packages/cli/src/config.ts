@@ -69,6 +69,7 @@ export type TaskStepConfig = {
 export type TaskConfig = {
   title?: string
   failFast?: boolean
+  outputMode?: TaskOutputMode
   steps: TaskStepConfig[]
 }
 
