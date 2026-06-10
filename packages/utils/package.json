@@ -1,6 +1,6 @@
 {
-  "name": "webtoolkit-utils",
-  "version": "0.7.5",
+  "name": "@titannio/webtoolkit-utils",
+  "version": "0.7.6",
   "private": false,
   "description": "Typed utility toolkit for TypeScript projects with explicit entrypoints for browser, server, framework, database, and country modules.",
   "keywords": [
@@ -216,8 +216,9 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "prepack": "npm run build",
+    "npm:pack": "npm pack --dry-run",
     "npm:update": "npm update",
-    "npm:release": "npm publish"
+    "npm:release": "npm publish --access public"
   },
   "peerDependencies": {
     "express": "^5.2.1",
@@ -266,5 +267,8 @@
     "remeda": "^2.37.0",
     "tailwind-merge": "^3.6.0",
     "zod": "^4.4.3"
+  },
+  "allowScripts": {
+    "sharp@0.34.5": true
   }
 }

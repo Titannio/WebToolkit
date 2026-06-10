@@ -1,32 +1,32 @@
-# webtoolkit-utils
+# @titannio/webtoolkit-utils
 
 Typed utility toolkit for TypeScript projects, split into explicit entrypoints by environment and domain.
 
 ## Installation
 
 ```bash
-npm install webtoolkit-utils
+npm install @titannio/webtoolkit-utils
 ```
 
 Install optional peers only when you use their entrypoints:
 
-- `react` for `webtoolkit-utils/frameworks/react`
-- `mongoose` for `webtoolkit-utils/database/mongodb`
-- `sharp` for `webtoolkit-utils/server/media`
-- `express` for richer `webtoolkit-utils/server/http` typings
+- `react` for `@titannio/webtoolkit-utils/frameworks/react`
+- `mongoose` for `@titannio/webtoolkit-utils/database/mongodb`
+- `sharp` for `@titannio/webtoolkit-utils/server/media`
+- `express` for richer `@titannio/webtoolkit-utils/server/http` typings
 
 ## Public Entrypoints
 
 ```ts
-import { formatCurrency, resolveGeoPointCoordinates } from 'webtoolkit-utils'
-import { shareContent } from 'webtoolkit-utils/browser'
-import { isImageFile } from 'webtoolkit-utils/browser/files'
-import { normalizeMongoose } from 'webtoolkit-utils/database/mongodb'
-import { useDebounce } from 'webtoolkit-utils/frameworks/react'
-import { wrapZodSchema } from 'webtoolkit-utils/frameworks/mantine'
-import { generateRandomPassword } from 'webtoolkit-utils/server'
-import { extractIpAddress } from 'webtoolkit-utils/server/http'
-import { processImage } from 'webtoolkit-utils/server/media'
+import { formatCurrency, resolveGeoPointCoordinates } from '@titannio/webtoolkit-utils'
+import { shareContent } from '@titannio/webtoolkit-utils/browser'
+import { isImageFile } from '@titannio/webtoolkit-utils/browser/files'
+import { normalizeMongoose } from '@titannio/webtoolkit-utils/database/mongodb'
+import { useDebounce } from '@titannio/webtoolkit-utils/frameworks/react'
+import { wrapZodSchema } from '@titannio/webtoolkit-utils/frameworks/mantine'
+import { generateRandomPassword } from '@titannio/webtoolkit-utils/server'
+import { extractIpAddress } from '@titannio/webtoolkit-utils/server/http'
+import { processImage } from '@titannio/webtoolkit-utils/server/media'
 ```
 
 ## Notes

@@ -1,8 +1,15 @@
 # WebToolkit
 
-Repository for the **`webtoolkit-utils`** package.
+Repository for WebToolkit public packages.
 
-`webtoolkit-utils` is a TypeScript utility library focused on:
+## Packages
+
+- **`@titannio/webtoolkit-utils`**: typed utility library with explicit entrypoints for browser, server, framework, database, and country modules.
+- **`@titannio/webtoolkit-cli`**: portable CLI tools for TypeScript monorepos and web projects.
+
+## Utility Package Purpose
+
+`@titannio/webtoolkit-utils` is focused on:
 
 - Real reuse between frontend and backend.
 - Explicit entrypoints by environment and domain.
@@ -49,16 +56,16 @@ In other words:
 ## How To Use The Published Package
 
 ```bash
-npm install webtoolkit-utils
+npm install @titannio/webtoolkit-utils
 ```
 
 Import examples:
 
 ```ts
-import { formatCurrency } from 'webtoolkit-utils'
-import { shareContent } from 'webtoolkit-utils/browser'
-import { wrapZodSchema } from 'webtoolkit-utils/frameworks/mantine'
-import { extractIpAddress } from 'webtoolkit-utils/server/http'
+import { formatCurrency } from '@titannio/webtoolkit-utils'
+import { shareContent } from '@titannio/webtoolkit-utils/browser'
+import { wrapZodSchema } from '@titannio/webtoolkit-utils/frameworks/mantine'
+import { extractIpAddress } from '@titannio/webtoolkit-utils/server/http'
 ```
 
 ## Local Development
@@ -70,7 +77,16 @@ npm run test
 npm run test:coverage
 ```
 
-## Notes
+For CLI package work:
+
+```bash
+cd packages/cli
+npm install
+npm run test
+npm run build
+```
+
+## Utility Package Notes
 
 - The root entrypoint exposes only agnostic utilities.
 - Local rules must stay in `countries/*`.
