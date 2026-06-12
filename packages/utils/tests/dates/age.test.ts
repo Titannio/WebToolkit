@@ -14,10 +14,24 @@ describe('age utils', () => {
     expect(parseCivilDate('20080510', 'YMD')).toEqual({ year: 2008, month: 5, day: 10 })
   })
 
+  it('parses valid Date instances as UTC civil dates', () => {
+    expect(parseCivilDate(new Date('2008-05-10T23:30:00.000Z'))).toEqual({
+      year: 2008,
+      month: 5,
+      day: 10,
+    })
+  })
+
   it('returns null for invalid civil dates', () => {
     expect(parseCivilDate('2008-02-30')).toBeNull()
     expect(parseCivilDate('invalid')).toBeNull()
+    expect(parseCivilDate(null)).toBeNull()
+    expect(parseCivilDate(undefined)).toBeNull()
+    expect(parseCivilDate('   ')).toBeNull()
     expect(parseCivilDate('10/05/2008')).toBeNull()
+    expect(parseCivilDate('10/05/20', 'DMY')).toBeNull()
+    expect(parseCivilDate('31/02/2008', 'DMY')).toBeNull()
+    expect(parseCivilDate(new Date('invalid'))).toBeNull()
   })
 
   it('calculates age from civil dates', () => {
@@ -33,6 +47,7 @@ describe('age utils', () => {
 
     expect(getAgeFromDate('2027-01-01', referenceDate)).toBeNull()
     expect(getAgeFromDate('invalid', referenceDate)).toBeNull()
+    expect(getAgeFromDate('2008-05-10', new Date('invalid'))).toBeNull()
   })
 
   it('checks minimum age thresholds', () => {

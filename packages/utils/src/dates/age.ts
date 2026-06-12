@@ -3,8 +3,6 @@
  * @description Utilities for parsing civil dates and calculating age thresholds.
  */
 
-import { toDate } from './date.js'
-
 /**
  * Supported civil-date string formats for localized parsing.
  */
@@ -114,14 +112,7 @@ export function parseCivilDate(value?: string | Date | null, format?: CivilDateF
     if (parsedFormatted) return parsedFormatted
   }
 
-  const parsed = toDate(normalized)
-  if (!parsed) return null
-
-  return {
-    year: parsed.getUTCFullYear(),
-    month: parsed.getUTCMonth() + 1,
-    day: parsed.getUTCDate(),
-  }
+  return null
 }
 
 /**
