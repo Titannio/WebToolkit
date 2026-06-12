@@ -207,7 +207,11 @@ function main() {
   process.exit(0)
 }
 
-const isMainModule = process.argv[1] === __filename
-if (isMainModule) {
+export function isMainModule(argv = process.argv, moduleUrl = import.meta.url) {
+  const entrypoint = argv[1]
+  return Boolean(entrypoint) && path.resolve(entrypoint) === fileURLToPath(moduleUrl)
+}
+
+if (isMainModule()) {
   main()
 }
