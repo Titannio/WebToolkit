@@ -2,7 +2,7 @@ import { spawn, spawnSync } from 'node:child_process'
 import { createServer } from 'node:net'
 
 import type { DevAppConfig, WebToolkitCliConfig } from './config.js'
-import { buildPackageManagerCommand } from './process.js'
+import { buildPackageManagerCommand, resolveSpawnSpec } from './process.js'
 
 type Runtime = {
   cwd: string
@@ -11,21 +11,14 @@ type Runtime = {
 
 const isWindows = process.platform === 'win32'
 
-function quoteShellArg(arg: string): string {
-  if (/^[\w@%+=:,./\\-]+$/u.test(arg)) return arg
-  return `"${arg.replace(/"/gu, '\\"')}"`
+export function resolveDevWatchSpawnSpec(command: string, commandArgs: string[]): { command: string; args: string[]; detached: boolean } {
+  const resolved = resolveSpawnSpec(command, commandArgs)
+  return { ...resolved, detached: !isWindows }
 }
 
 function spawnCommand(command: string, commandArgs: string[], options = {}) {
-  if (!isWindows) {
-    return spawn(command, commandArgs, { ...options, detached: true })
-  }
-
-  return spawn(
-    process.env.ComSpec ?? 'cmd.exe',
-    ['/d', '/s', '/c', [command, ...commandArgs].map(quoteShellArg).join(' ')],
-    options,
-  )
+  const resolved = resolveDevWatchSpawnSpec(command, commandArgs)
+  return spawn(resolved.command, resolved.args, { ...options, detached: resolved.detached })
 }
 
 function getArgValue(args: string[], name: string): string | null {

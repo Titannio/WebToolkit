@@ -1,6 +1,6 @@
 {
   "name": "@titannio/webtoolkit-utils",
-  "version": "0.7.6",
+  "version": "0.7.7",
   "private": false,
   "description": "Typed utility toolkit for TypeScript projects with explicit entrypoints for browser, server, framework, database, and country modules.",
   "keywords": [
