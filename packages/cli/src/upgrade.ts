@@ -283,7 +283,7 @@ function getProtectedDependencyNames(runtime: Runtime): string[] {
   return Object.keys(readProtectedOverrides(runtime.cwd, runtime.config.upgrade?.protectedOverridesFile ?? 'pnpm-workspace.yaml')).sort((left, right) => left.localeCompare(right))
 }
 
-function mergeRejectLists(baseRejectList: string[], protectedDependencyNames: string[]): string[] {
+export function mergeRejectLists(baseRejectList: string[], protectedDependencyNames: string[]): string[] {
   return uniqueSorted([...baseRejectList, ...protectedDependencyNames])
 }
 
@@ -353,9 +353,9 @@ async function collectUpgradeCandidates(runtime: Runtime, target: TargetMode, re
   return mergeWorkspaceUpdates(outdatedUpdates, ncuUpdates)
 }
 
-async function collectProtectedHoldUpdates(runtime: Runtime, target: TargetMode): Promise<WorkspaceUpdates> {
+async function collectProtectedHoldUpdates(runtime: Runtime, target: TargetMode, rejectList: string[] = []): Promise<WorkspaceUpdates> {
   const protectedNames = new Set(getProtectedDependencyNames(runtime))
-  const allCandidates = await collectUpgradeCandidates(runtime, target, [], true)
+  const allCandidates = await collectUpgradeCandidates(runtime, target, rejectList, true)
 
   return sortUpdatesByFile(Object.fromEntries(
     Object.entries(allCandidates)
@@ -424,7 +424,7 @@ async function getCooldownRejectList(runtime: Runtime, days: number, target: Tar
 
   try {
     console.info(colorize(`Checking release age for ${target} updates (${days}-day cooldown)...`, colors.cyan))
-    const candidatesByFile = await collectUpgradeCandidates(runtime, target, [], false)
+    const candidatesByFile = await collectUpgradeCandidates(runtime, target, [], true)
     const allCandidates = new Map<string, string>()
 
     for (const fileUpdates of Object.values(candidatesByFile)) {
@@ -511,7 +511,7 @@ function parseCliArgs(runtime: Runtime, rawArgs: string[]): UpgradeOptions {
   }
 }
 
-function parseYesNo(answer: string, defaultValue: boolean): boolean | null {
+export function parseYesNo(answer: string, defaultValue: boolean): boolean | null {
   const normalized = answer.trim().toLowerCase()
   if (!normalized) return defaultValue
   if (['s', 'sim', 'y', 'yes'].includes(normalized)) return true
@@ -519,11 +519,15 @@ function parseYesNo(answer: string, defaultValue: boolean): boolean | null {
   return null
 }
 
+export function formatYesNoPrompt(icon: string, question: string, defaultValue: boolean): string {
+  return `${icon} ${question} [Y/N] ${defaultValue ? 'Y' : 'N'} `
+}
+
 async function promptYesNo(prompt: ReturnType<typeof createInterface>, question: string, defaultValue: boolean): Promise<boolean> {
   while (true) {
     const parsed = parseYesNo(await prompt.question(question), defaultValue)
     if (parsed !== null) return parsed
-    console.info(colorize('Invalid answer. Use yes or no.', colors.yellow))
+    console.info(colorize('Invalid answer. Use Y or N.', colors.yellow))
   }
 }
 
@@ -534,14 +538,14 @@ async function resolveOptions(runtime: Runtime, rawArgs: string[]): Promise<Upgr
   console.info(colorize('Upgrade configuration', colors.bright))
   const prompt = createInterface({ input, output })
   try {
-    const cooldownEnabled = await promptYesNo(prompt, 'Cooldown enabled? (default: yes): ', cliOptions.days > 0)
-    const allowMajor = await promptYesNo(prompt, 'Major upgrades? (default: no): ', cliOptions.allowMajor)
-    const alignProtectedSingletons = await promptYesNo(prompt, 'Protected singleton upgrades? (default: no): ', cliOptions.alignProtectedSingletons)
+    const cooldownEnabled = await promptYesNo(prompt, formatYesNoPrompt('❄', 'Cooldown enabled?', cliOptions.days > 0), cliOptions.days > 0)
+    const allowMajor = await promptYesNo(prompt, formatYesNoPrompt('↗', 'Major upgrades?', cliOptions.allowMajor), cliOptions.allowMajor)
+    const alignProtectedSingletons = await promptYesNo(prompt, formatYesNoPrompt('🔄', 'Protected singleton upgrades?', cliOptions.alignProtectedSingletons), cliOptions.alignProtectedSingletons)
     return {
       allowMajor,
       verbose: cliOptions.verbose,
       alignProtectedSingletons,
-      days: cooldownEnabled ? (runtime.config.upgrade?.defaultCooldownDays ?? 7) : 0,
+      days: cooldownEnabled ? (cliOptions.days > 0 ? cliOptions.days : (runtime.config.upgrade?.defaultCooldownDays ?? 7)) : 0,
     }
   } finally {
     prompt.close()
@@ -558,7 +562,7 @@ export async function runUpgradeEngine(runtime: Runtime, rawArgs: string[]): Pro
   const upgradeCandidates = await collectUpgradeCandidates(runtime, target, cooldownRejectList)
   const versionsByFile = await getManifestVersionsByFile(upgradeCandidates, runtime.cwd)
   const updatedEntries = buildUpgradeEntries(upgradeCandidates, (filePath, packageName) => versionsByFile[filePath]?.[packageName] ?? null)
-  const protectedHoldUpdates = await collectProtectedHoldUpdates(runtime, target)
+  const protectedHoldUpdates = await collectProtectedHoldUpdates(runtime, target, cooldownRejectList)
   const protectedHoldVersionsByFile = await getManifestVersionsByFile(protectedHoldUpdates, runtime.cwd)
   let protectedHoldEntries = buildUpgradeEntries(protectedHoldUpdates, (filePath, packageName) => protectedHoldVersionsByFile[filePath]?.[packageName] ?? null)
   let protectedUpgradedEntries: UpgradeEntry[] = []
@@ -576,7 +580,7 @@ export async function runUpgradeEngine(runtime: Runtime, rawArgs: string[]): Pro
     const overrideUpdates = Object.fromEntries(plans.map((plan) => [plan.packageName, plan.targetVersion]))
 
     console.info(colorize('Applying protected singleton upgrades...', colors.cyan))
-    await applyWorkspaceUpgrades(runtime, target, [], selectedPackages)
+    await applyWorkspaceUpgrades(runtime, target, cooldownRejectList, selectedPackages)
     console.info(colorize('Updating protected dependency overrides...', colors.cyan))
     await updateProtectedOverrides(runtime.cwd, runtime.config.upgrade?.protectedOverridesFile ?? 'pnpm-workspace.yaml', overrideUpdates)
     console.info(colorize('Installing dependencies after protected singleton upgrades...', colors.cyan))
