@@ -182,13 +182,34 @@ function parseFailureSummary(outputBuffer: string, code: number, hasFailure: boo
   return summary
 }
 
-function formatFailureSummary(summary: Pick<WorkspaceResult, 'failedFiles' | 'failedTests' | 'failedTestsDetected'>): string {
-  const fileLabel = summary.failedFiles === 1 ? '1 arquivo com erro' : `${summary.failedFiles} arquivos com erro`
-  const testLabel = summary.failedTestsDetected
-    ? summary.failedTests === 1 ? '1 teste com erro' : `${summary.failedTests} testes com erro`
-    : 'testes com erro nao detectados'
+export function formatFailureSummary(summary: Pick<WorkspaceResult, 'failedFiles' | 'failedTests' | 'failedTestsDetected'>): string {
+  const fileLabel = summary.failedFiles === 1 ? '1 arquivo' : `${summary.failedFiles} arquivos`
+  if (!summary.failedTestsDetected) {
+    return `falhas nao detectadas em ${fileLabel}`
+  }
 
-  return `${fileLabel}, ${testLabel}`
+  const failureLabel = summary.failedTests === 1 ? '1 falha' : `${summary.failedTests} falhas`
+
+  return `${failureLabel} em ${fileLabel}`
+}
+
+type WorkspaceTestStatusLineOptions =
+  | {
+    failed: true
+    duration: string
+    summary: Pick<WorkspaceResult, 'failedFiles' | 'failedTests' | 'failedTestsDetected'>
+  }
+  | {
+    failed: false
+    duration: string
+  }
+
+export function formatWorkspaceTestStatusLine(options: WorkspaceTestStatusLineOptions): string {
+  if (options.failed) {
+    return `\x1b[31mERRO\x1b[0m - ${formatFailureSummary(options.summary)} (${options.duration}s)`
+  }
+
+  return `\x1b[32mOK\x1b[0m (${options.duration}s)`
 }
 
 function drawProgressBar(label: string, name: string, completed: number, total: number, results: boolean[], coverage: number | null = null): void {
@@ -289,9 +310,9 @@ async function runWorkspaceTest(target: WorkspaceTargetConfig, runtime: Runtime)
       if (failed && !results.includes(false)) results.push(false)
       drawProgressBar('Testing', target.name, totalFiles, totalFiles, results)
 
-      console.info(failed
-        ? `\x1b[31m FALHA\x1b[0m - ${formatFailureSummary(summary)} (${duration}s)`
-        : `\x1b[32m OK\x1b[0m - 0 arquivos com erro, 0 testes com erro (${duration}s)`)
+      console.info(formatWorkspaceTestStatusLine(failed
+        ? { failed, duration, summary }
+        : { failed, duration }))
 
       resolve({ target, command: commandText, duration, exitCode, outputBuffer, failed, ...summary })
     }
