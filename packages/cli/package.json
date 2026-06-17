@@ -32,7 +32,8 @@
     "type-check": "tsc --noEmit",
     "clean": "node -e \"require('fs').rmSync('dist', { recursive: true, force: true }); require('fs').rmSync('.tsbuildinfo', { force: true })\"",
     "test": "vitest run",
-    "prepack": "npm run build",
+    "test:coverage": "vitest run --coverage",
+    "prepack": "npm run test:coverage && npm run build",
     "npm:pack": "npm pack --dry-run",
     "npm:update": "npm update",
     "npm:release": "npm publish --access public"
@@ -44,6 +45,7 @@
   },
   "devDependencies": {
     "@types/node": "^25.9.1",
-    "vitest": "^4.1.7"
+    "@vitest/coverage-v8": "^4.1.9",
+    "vitest": "^4.1.9"
   }
 }

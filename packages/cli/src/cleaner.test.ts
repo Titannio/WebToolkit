@@ -5,7 +5,7 @@ import path from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { mergeConfig } from './config.js'
-import { parseCleanArgs, resolvePackageManagerCommand, runCleaner } from './cleaner.js'
+import { parseCleanArgs, parseLevel, resolvePackageManagerCommand, runCleaner } from './cleaner.js'
 
 const tempRoots: string[] = []
 
@@ -21,19 +21,20 @@ afterEach(async () => {
 })
 
 describe('clean command args', () => {
-  it('parses nuclear mode with no-store-prune and reinstall policy', () => {
-    const options = parseCleanArgs(['--level=nuclear', '--no-store-prune', '--reinstall=never'])
-
-    expect(options).toEqual({
+  it('parses levels and flags from long options', () => {
+    expect(parseLevel('cache')).toBe('cache')
+    expect(parseLevel('deep')).toBe('deep')
+    expect(parseLevel('bad')).toBeNull()
+    expect(parseCleanArgs(['--level=nuclear', '--no-store-prune', '--interactive', '--reinstall=never'])).toEqual({
       level: 'nuclear',
       dryRun: false,
       noStorePrune: true,
-      interactive: false,
+      interactive: true,
       reinstall: 'never',
     })
   })
 
-  it('ignores a package-script argument separator', () => {
+  it('respects short-form argument parsing', () => {
     expect(parseCleanArgs(['--', '--level', 'cache', '--dry-run'])).toEqual({
       level: 'cache',
       dryRun: true,
@@ -43,7 +44,7 @@ describe('clean command args', () => {
     })
   })
 
-  it('wraps the package manager through cmd.exe on Windows', () => {
+  it('wraps package manager through cmd.exe on Windows', () => {
     const platform = vi.spyOn(process, 'platform', 'get').mockReturnValue('win32')
 
     try {
@@ -56,7 +57,7 @@ describe('clean command args', () => {
     }
   })
 
-  it('calls the package manager directly outside Windows', () => {
+  it('calls package manager directly outside Windows', () => {
     const platform = vi.spyOn(process, 'platform', 'get').mockReturnValue('linux')
 
     try {
@@ -85,7 +86,7 @@ describe('cleaner behavior', () => {
     await expect(readFile(path.join(root, 'packages', 'app', '.turbo', 'marker.txt'), 'utf8')).resolves.toBe('cache')
   })
 
-  it('removes project-specific files from config overrides', async () => {
+  it('removes configured specific files in deep mode', async () => {
     const root = await createTempRoot()
     const generatedFile = path.join(root, 'apps', 'frontend-user', 'src', 'setup-env.js')
     await mkdir(path.dirname(generatedFile), { recursive: true })
@@ -104,7 +105,16 @@ describe('cleaner behavior', () => {
       }),
     })
 
-    expect(removals).toContainEqual({ kind: 'file', relPath: path.join('apps', 'frontend-user', 'src', 'setup-env.js') })
+    expect(removals).toContainEqual({
+      kind: 'file',
+      relPath: path.join('apps', 'frontend-user', 'src', 'setup-env.js'),
+    })
     await expect(readFile(generatedFile, 'utf8')).rejects.toThrow()
+  })
+
+  it('falls back to default level when interactive mode is disabled and no level is chosen', async () => {
+    const root = await createTempRoot()
+    await runCleaner({ ...parseCleanArgs([]) }, { cwd: root, config: mergeConfig() })
+    await expect(rm(root, { recursive: true, force: true })).resolves.toBeUndefined()
   })
 })
