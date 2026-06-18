@@ -22,7 +22,12 @@ vi.mock('node:child_process', () => {
   }
 })
 
+vi.mock('./guard-runner.js', () => ({
+  executeBuiltinGuard: vi.fn(),
+}))
+
 import { spawn } from 'node:child_process'
+import { executeBuiltinGuard } from './guard-runner.js'
 import { formatTaskStatusLine, listTaskCommands, normalizePassthroughArgs, printTaskHelp, resolveTaskName, runTask } from './tasks.js'
 
 const runtimeWithConfig = (cwd: string, config: Parameters<typeof mergeConfig>[0]) => ({ cwd, config: mergeConfig(config) })
@@ -67,6 +72,7 @@ afterEach(() => {
   vi.restoreAllMocks()
   spawnMockCalls.length = 0
   vi.mocked(spawn).mockReset()
+  vi.mocked(executeBuiltinGuard).mockReset()
 })
 
 describe('task routing and helpers', () => {
@@ -351,7 +357,7 @@ describe('task execution', () => {
 
     await expect(runTask('check', runtime, []))
       .rejects
-      .toThrow('Task step "broken" must define command.')
+      .toThrow('Task step "broken" must define command or builtinGuard.')
   })
 
   it('formats command output with builtin placeholder when step command is missing', async () => {
@@ -369,7 +375,7 @@ describe('task execution', () => {
 
     await expect(runTask('check', runtime, ['--value']))
       .rejects
-      .toThrow('Task step "build" must define command.')
+      .toThrow('Task step "build" must define command or builtinGuard.')
 
     expect(consoleInfo).toHaveBeenCalledWith(expect.stringContaining('$ <builtin> --watch'))
     consoleInfo.mockRestore()
@@ -489,5 +495,45 @@ describe('task execution', () => {
     await expect(runTask('missing', runtime, []))
       .rejects
       .toThrow('Task "missing" is not configured.')
+  })
+
+  it('runs builtin guard steps with configured and passthrough args', async () => {
+    vi.mocked(executeBuiltinGuard).mockReturnValue(0)
+    const consoleInfo = vi.spyOn(console, 'info').mockImplementation(() => undefined)
+    const runtime: TestRuntime = runtimeWithConfig('/repo', {
+      packageManager: 'pnpm',
+      tasks: {
+        check: {
+          steps: [
+            { label: 'guard', builtinGuard: 'code-pattern', args: ['--root', 'src'], appendArgs: true },
+          ],
+        },
+      },
+    })
+
+    await expect(runTask('check', runtime, ['--', '--changed'])).resolves.toBeUndefined()
+
+    expect(executeBuiltinGuard).toHaveBeenCalledWith('code-pattern', ['--root', 'src', '--changed'], '/repo')
+    expect(spawnMockCalls).toHaveLength(0)
+    expect(consoleInfo).toHaveBeenCalledWith(expect.stringContaining('$ webtoolkit guard code-pattern --root src --changed'))
+    consoleInfo.mockRestore()
+  })
+
+  it('prints builtin guard commands in task help', () => {
+    const consoleInfo = vi.spyOn(console, 'info').mockImplementation(() => undefined)
+
+    printTaskHelp('check', runtimeWithConfig('/repo', {
+      packageManager: 'pnpm',
+      tasks: {
+        check: {
+          steps: [
+            { label: 'guard', builtinGuard: 'docs-inventory', args: ['--strict'] },
+          ],
+        },
+      },
+    }).config)
+
+    expect(consoleInfo).toHaveBeenCalledWith(expect.stringContaining('- guard: webtoolkit guard docs-inventory --strict'))
+    consoleInfo.mockRestore()
   })
 })

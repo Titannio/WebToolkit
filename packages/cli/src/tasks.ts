@@ -2,6 +2,7 @@ import { spawn } from 'node:child_process'
 import path from 'node:path'
 
 import type { TaskConfig, TaskOutputMode, TaskStepConfig, WebToolkitCliConfig } from './config.js'
+import { executeBuiltinGuard } from './guard-runner.js'
 
 type Runtime = {
   cwd: string
@@ -33,7 +34,7 @@ function resolveWorkingDirectory(runtime: Runtime, step: TaskStepConfig): string
 
 function resolveCommand(step: TaskStepConfig, args: string[]): { command: string; args: string[]; shell: boolean } {
   if (!step.command) {
-    throw new Error(`Task step "${step.label}" must define command.`)
+    throw new Error(`Task step "${step.label}" must define command or builtinGuard.`)
   }
 
   if (process.platform !== 'win32') {
@@ -75,8 +76,13 @@ function getStepAction(step: TaskStepConfig): string {
 
 function runStep(step: TaskStepConfig, runtime: Runtime, passthroughArgs: string[], defaultOutputMode: TaskOutputMode): Promise<{ code: number; output: string }> {
   const args = [...(step.args ?? []), ...(step.appendArgs ? normalizePassthroughArgs(passthroughArgs) : [])]
-  const resolved = resolveCommand(step, args)
   const outputMode = step.outputMode ?? defaultOutputMode
+
+  if (step.builtinGuard) {
+    return Promise.resolve({ code: executeBuiltinGuard(step.builtinGuard, args, runtime.cwd), output: '' })
+  }
+
+  const resolved = resolveCommand(step, args)
   const child = spawn(resolved.command, resolved.args, {
     cwd: resolveWorkingDirectory(runtime, step),
     env: {
@@ -130,7 +136,8 @@ export function printTaskHelp(taskName: string, config: WebToolkitCliConfig): vo
   console.info('')
   console.info('Steps:')
   for (const step of task.steps) {
-    console.info(` - ${step.label}: ${step.command ?? '<builtin>'} ${(step.args ?? []).join(' ')}`.trim())
+    const command = step.builtinGuard ? `webtoolkit guard ${step.builtinGuard}` : step.command ?? '<builtin>'
+    console.info(` - ${step.label}: ${command} ${(step.args ?? []).join(' ')}`.trim())
   }
 
   if (task.steps.some((step) => step.appendArgs)) {
@@ -178,7 +185,8 @@ export async function runTask(taskName: string, runtime: Runtime, passthroughArg
       console.info('')
       console.info(startLine)
       console.info(`> ${step.label}`)
-      console.info(`$ ${step.command ?? '<builtin>'} ${[...(step.args ?? []), ...(step.appendArgs ? normalizePassthroughArgs(passthroughArgs) : [])].join(' ')}`.trim())
+      const displayCommand = step.builtinGuard ? `webtoolkit guard ${step.builtinGuard}` : step.command ?? '<builtin>'
+      console.info(`$ ${displayCommand} ${[...(step.args ?? []), ...(step.appendArgs ? normalizePassthroughArgs(passthroughArgs) : [])].join(' ')}`.trim())
     }
 
     const startedAt = Date.now()

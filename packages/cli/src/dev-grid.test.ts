@@ -48,7 +48,7 @@ describe('dev-grid runtime', () => {
       },
     }), ['--silent', '--dry-run'])
 
-    expect(stdout).toHaveBeenCalledWith(expect.stringContaining('npm run dev-grid'))
+    expect(stdout).toHaveBeenCalledWith(expect.stringContaining('"args": [\n    "run",\n    "dev-grid"\n  ]'))
     expect(processExit).toHaveBeenCalledWith(0)
     platform.mockRestore()
     processExit.mockRestore()
@@ -58,7 +58,12 @@ describe('dev-grid runtime', () => {
     const platform = vi.spyOn(process, 'platform', 'get').mockReturnValue('win32' as NodeJS.Platform)
     const processExit = vi.spyOn(process, 'exit').mockImplementation(() => undefined as never)
     vi.mocked(runCommandInherited).mockReturnValue(0)
-    vi.mocked(spawnSync).mockImplementation((command, _args) => {
+    vi.mocked(spawnSync).mockImplementation((command, args, options) => {
+      spawnCalls.push({
+        command: String(command),
+        args: [...(args ?? [])],
+        options,
+      })
       if (typeof command === 'string' && command.includes('where')) {
         return { status: 1, stdout: '', stderr: '' } as never
       }
@@ -76,6 +81,7 @@ describe('dev-grid runtime', () => {
     }), [])).not.toThrow()
 
     expect(processExit).toHaveBeenCalledWith(0)
+    expect(spawnCalls.some((entry) => entry.command === 'pnpm.cmd' && entry.args.join(' ') === 'run dev-grid')).toBe(true)
     expect(consoleError).not.toHaveBeenCalled()
     platform.mockRestore()
     processExit.mockRestore()

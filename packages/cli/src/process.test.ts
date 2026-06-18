@@ -30,7 +30,7 @@ import { PassThrough } from 'node:stream'
 import { spawn, spawnSync } from 'node:child_process'
 import { PassThrough as NodePassThrough } from 'node:stream'
 
-import { buildPackageManagerCommand, resolveCwd, resolveSpawnSpec, runCommandBuffered, runCommandInherited } from './process.js'
+import { buildFreshPackageManagerCommand, buildPackageManagerCommand, resolveCwd, resolveSpawnSpec, runCommandBuffered, runCommandInherited } from './process.js'
 
 function resetChildMocks() {
   spawned.length = 0
@@ -78,6 +78,23 @@ describe('process helpers', () => {
       expect(buildPackageManagerCommand('pnpm', ['--version', '--loglevel', 'info'])).toEqual({
         command: process.execPath,
         args: [npmExecPath, '--version', '--loglevel', 'info'],
+      })
+    } finally {
+      process.env.npm_execpath = original
+      platform.mockRestore()
+    }
+  })
+
+  it('builds fresh package-manager commands without npm_execpath', () => {
+    const platform = vi.spyOn(process, 'platform', 'get').mockReturnValue('win32')
+    const npmExecPath = '/tmp/pnpm.cjs'
+    const original = process.env.npm_execpath
+
+    process.env.npm_execpath = npmExecPath
+    try {
+      expect(buildFreshPackageManagerCommand('pnpm', ['install'])).toEqual({
+        command: 'pnpm.cmd',
+        args: ['install'],
       })
     } finally {
       process.env.npm_execpath = original

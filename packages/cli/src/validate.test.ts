@@ -11,13 +11,19 @@ vi.mock('./process.js', async (importOriginal) => {
   }
 })
 
+vi.mock('./guard-runner.js', () => ({
+  executeBuiltinGuard: vi.fn(),
+}))
+
 import { runCommandBuffered } from './process.js'
+import { executeBuiltinGuard } from './guard-runner.js'
 
 const runtimeWithConfig = (cwd: string, config: Parameters<typeof mergeConfig>[0]) => ({ cwd, config: mergeConfig(config) })
 
 afterEach(() => {
   vi.restoreAllMocks()
   vi.mocked(runCommandBuffered).mockReset()
+  vi.mocked(executeBuiltinGuard).mockReset()
 })
 
 describe('validate', () => {
@@ -145,6 +151,51 @@ describe('validate', () => {
       validate: {
         steps: [{ label: 'broken' }],
       },
-    }))).rejects.toThrow('Validate step "broken" must define command.')
+    }))).rejects.toThrow('Validate step "broken" must define command or builtinGuard.')
+  })
+
+  it('executes builtin guard steps without spawning configured commands', async () => {
+    vi.mocked(executeBuiltinGuard).mockReturnValue(0)
+
+    await runValidateEngine(runtimeWithConfig('/repo', {
+      packageManager: 'pnpm',
+      validate: {
+        steps: [{ label: 'guard', builtinGuard: 'docs-inventory', args: ['--strict'] }],
+      },
+    }))
+
+    expect(executeBuiltinGuard).toHaveBeenCalledWith('docs-inventory', ['--strict'], '/repo')
+    expect(vi.mocked(runCommandBuffered)).not.toHaveBeenCalled()
+  })
+
+  it('reports builtin guard failures with a command-like fallback', async () => {
+    const consoleInfo = vi.spyOn(console, 'info').mockImplementation(() => undefined)
+    vi.mocked(executeBuiltinGuard).mockReturnValue(1)
+
+    await expect(runValidateEngine(runtimeWithConfig('/repo', {
+      packageManager: 'pnpm',
+      validate: {
+        steps: [{ label: 'guard', builtinGuard: 'code-pattern', args: ['--changed'] }],
+      },
+    }))).rejects.toThrow('Validate step "guard" failed.')
+
+    expect(consoleInfo).toHaveBeenCalledWith(expect.stringContaining('Command failed: webtoolkit guard code-pattern --changed'))
+    consoleInfo.mockRestore()
+  })
+
+  it('reports builtin guard failures without optional args', async () => {
+    const consoleInfo = vi.spyOn(console, 'info').mockImplementation(() => undefined)
+    vi.mocked(executeBuiltinGuard).mockReturnValue(1)
+
+    await expect(runValidateEngine(runtimeWithConfig('/repo', {
+      packageManager: 'pnpm',
+      validate: {
+        steps: [{ label: 'guard', builtinGuard: 'code-pattern' }],
+      },
+    }))).rejects.toThrow('Validate step "guard" failed.')
+
+    expect(executeBuiltinGuard).toHaveBeenCalledWith('code-pattern', [], '/repo')
+    expect(consoleInfo).toHaveBeenCalledWith(expect.stringContaining('Command failed: webtoolkit guard code-pattern'))
+    consoleInfo.mockRestore()
   })
 })

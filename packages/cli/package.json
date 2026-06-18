@@ -1,6 +1,6 @@
 {
   "name": "@titannio/webtoolkit-cli",
-  "version": "1.2.0",
+  "version": "1.2.2",
   "private": false,
   "description": "Portable CLI tools for TypeScript monorepos and web projects.",
   "keywords": [
@@ -33,9 +33,12 @@
     "clean": "node -e \"require('fs').rmSync('dist', { recursive: true, force: true }); require('fs').rmSync('.tsbuildinfo', { force: true })\"",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
+    "verify": "npm run type-check && npm run test:coverage && npm run build && npm run npm:pack",
+    "release:check": "npm run verify",
     "prepack": "npm run test:coverage && npm run build",
+    "prepublishOnly": "npm run verify",
     "npm:pack": "npm pack --dry-run",
-    "npm:update": "npm update",
+    "deps:update": "npm update",
     "npm:release": "npm publish --access public"
   },
   "dependencies": {

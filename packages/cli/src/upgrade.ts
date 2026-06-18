@@ -5,7 +5,8 @@ import { createInterface } from 'node:readline/promises'
 import { stdin as input, stdout as output } from 'node:process'
 
 import type { TaskStepConfig, WebToolkitCliConfig } from './config.js'
-import { buildPackageManagerCommand, CommandResult, formatCommand, runCommandBuffered, runCommandInherited } from './process.js'
+import { prepareCorepackPnpm } from './environment.js'
+import { buildFreshPackageManagerCommand, buildPackageManagerCommand, CommandResult, formatCommand, runCommandBuffered, runCommandInherited } from './process.js'
 
 type Runtime = {
   cwd: string
@@ -60,6 +61,19 @@ function uniqueSorted(values: string[]): string[] {
 
 function normalizeVersionSpec(version: string): string {
   return version.replace(/^[~^]/u, '')
+}
+
+function validatePinnedPnpmVersion(version: string): void {
+  if (!version || version.includes(' ') || version === 'latest' || version === '11') {
+    throw new Error(`packageManager must pin an exact pnpm version, but found ${JSON.stringify(`pnpm@${version}`)}.`)
+  }
+}
+
+function parsePnpmPackageManagerVersion(packageManager: unknown): string | null {
+  if (typeof packageManager !== 'string' || !packageManager.startsWith('pnpm@')) return null
+  const version = packageManager.slice('pnpm@'.length).trim()
+  validatePinnedPnpmVersion(version)
+  return version
 }
 
 function getVersionMajor(versionSpec: string): number | null {
@@ -189,6 +203,11 @@ async function readManifestVersions(filePath: string): Promise<ManifestVersionMa
   return versions
 }
 
+async function readRootPnpmPackageManagerVersion(rootDir: string): Promise<string | null> {
+  const manifest = JSON.parse(await readFile(path.join(rootDir, 'package.json'), 'utf8')) as Record<string, unknown>
+  return parsePnpmPackageManagerVersion(manifest.packageManager)
+}
+
 async function getManifestVersionsByFile(updatesByFile: WorkspaceUpdates, rootDir: string): Promise<ManifestVersionsByFile> {
   const files = Object.keys(updatesByFile)
   const entries = await Promise.all(
@@ -296,10 +315,16 @@ async function runBufferedPm(runtime: Runtime, args: string[], rejectOnNonZero =
   return result
 }
 
-function runInheritedPm(runtime: Runtime, args: string[]): void {
-  const command = buildPackageManagerCommand(runtime.config.packageManager, args)
+function runInheritedPm(
+  runtime: Runtime,
+  args: string[],
+  buildCommand: (packageManager: string, args: string[]) => ReturnType<typeof buildPackageManagerCommand> = buildPackageManagerCommand,
+): void {
+  const command = buildCommand(runtime.config.packageManager, args)
   const code = runCommandInherited(command, runtime.cwd)
-  if (code !== 0) process.exit(code)
+  if (code !== 0) {
+    throw new Error(`Command failed: ${formatCommand(command.command, command.args ?? [])}`)
+  }
 }
 
 async function collectNcuUpdates(runtime: Runtime, target: TargetMode, rejectList: string[], includeProtected: boolean): Promise<WorkspaceUpdates> {
@@ -401,21 +426,22 @@ function buildProtectedUpgradePlans(runtime: Runtime, entries: UpgradeEntry[]): 
     .sort((left, right) => left.packageName.localeCompare(right.packageName))
 }
 
-async function getReleaseDate(packageName: string, version: string): Promise<Date | null> {
-  const result = await new Promise<CommandResult>((resolve) => {
-    const command = process.platform === 'win32' ? 'npm.cmd' : 'npm'
-    runCommandBuffered({ command, args: ['view', packageName, 'time', '--json'] }, process.cwd())
-      .then(resolve)
-      .catch(() => resolve({ code: 1, output: '' }))
-  })
+async function getReleaseDate(runtime: Runtime, packageName: string, version: string): Promise<Date | null> {
+  const command = process.platform === 'win32' ? 'npm.cmd' : 'npm'
+  const result = await runCommandBuffered({ command, args: ['view', packageName, 'time', '--json'] }, runtime.cwd)
 
-  if (result.code !== 0 || !result.output.trim()) return null
+  if (result.code !== 0 || !result.output.trim()) {
+    throw new Error(`Unable to read npm release metadata for "${packageName}".`)
+  }
 
   try {
     const times = JSON.parse(result.output) as Record<string, string>
-    return times[version] ? new Date(times[version]) : null
+    const releaseTime = times[version]
+    if (!releaseTime) return null
+    const releaseDate = new Date(releaseTime)
+    return Number.isNaN(releaseDate.getTime()) ? null : releaseDate
   } catch {
-    return null
+    throw new Error(`Invalid npm release metadata for "${packageName}".`)
   }
 }
 
@@ -438,10 +464,14 @@ async function getCooldownRejectList(runtime: Runtime, days: number, target: Tar
     const candidates = Array.from(allCandidates.entries())
 
     for (const [packageName, targetVersion] of candidates) {
-      const releaseDate = await getReleaseDate(packageName, normalizeVersionSpec(targetVersion))
+      const releaseDate = await getReleaseDate(runtime, packageName, normalizeVersionSpec(targetVersion))
       processed += 1
       process.stdout.write(`\rCooldown ${processed}/${candidates.length}`)
-      if (!releaseDate) continue
+      if (!releaseDate) {
+        rejectList.push(packageName)
+        console.warn(colorize(`\nCooldown hold: ${packageName} has unknown release age.`, colors.yellow))
+        continue
+      }
 
       const ageInDays = (Date.now() - releaseDate.getTime()) / (1000 * 60 * 60 * 24)
       if (ageInDays < days) rejectList.push(packageName)
@@ -449,9 +479,8 @@ async function getCooldownRejectList(runtime: Runtime, days: number, target: Tar
 
     if (candidates.length > 0) console.info('')
     return rejectList.sort((left, right) => left.localeCompare(right))
-  } catch {
-    console.warn(colorize('Cooldown pre-check failed. Continuing without additional holdbacks.', colors.yellow))
-    return []
+  } catch (error) {
+    throw new Error(`Cooldown pre-check failed before manifests were changed. ${(error as Error).message} Rerun with --no-cooldown to bypass release-age checks explicitly.`)
   }
 }
 
@@ -476,8 +505,26 @@ async function applyWorkspaceUpgrades(runtime: Runtime, target: TargetMode, reje
   runInheritedPm(runtime, args)
 }
 
-async function installDependencies(runtime: Runtime): Promise<void> {
-  runInheritedPm(runtime, ['install'])
+async function installDependencies(runtime: Runtime, useFreshPackageManager: boolean): Promise<void> {
+  try {
+    runInheritedPm(runtime, ['install'], useFreshPackageManager ? buildFreshPackageManagerCommand : buildPackageManagerCommand)
+  } catch (error) {
+    throw new Error([
+      'Dependency install failed after manifest updates.',
+      'The package.json files may already be changed while the lockfile/install is incomplete.',
+      `Run ${formatCommand(runtime.config.packageManager, ['install'])} after fixing the package-manager environment.`,
+      (error as Error).message,
+    ].join('\n'))
+  }
+}
+
+async function preparePackageManagerAfterManifestUpdates(runtime: Runtime, previousPnpmVersion: string | null): Promise<boolean> {
+  const currentPnpmVersion = await readRootPnpmPackageManagerVersion(runtime.cwd)
+  if (!currentPnpmVersion || currentPnpmVersion === previousPnpmVersion) return false
+
+  console.info(colorize(`Preparing pnpm ${currentPnpmVersion} via Corepack...`, colors.cyan))
+  prepareCorepackPnpm(runtime, runtime.cwd, currentPnpmVersion)
+  return true
 }
 
 function runConfiguredStep(runtime: Runtime, step: TaskStepConfig): void {
@@ -569,9 +616,11 @@ export async function runUpgradeEngine(runtime: Runtime, rawArgs: string[]): Pro
 
   if (updatedEntries.length > 0) {
     console.info(colorize('Applying dependency updates...', colors.cyan))
+    const previousPnpmVersion = await readRootPnpmPackageManagerVersion(runtime.cwd)
     await applyWorkspaceUpgrades(runtime, target, mergeRejectLists(cooldownRejectList, protectedNames))
+    const useFreshPackageManager = await preparePackageManagerAfterManifestUpdates(runtime, previousPnpmVersion)
     console.info(colorize('Installing dependencies...', colors.cyan))
-    await installDependencies(runtime)
+    await installDependencies(runtime, useFreshPackageManager)
   }
 
   if (options.alignProtectedSingletons && protectedHoldEntries.length > 0) {
@@ -580,11 +629,13 @@ export async function runUpgradeEngine(runtime: Runtime, rawArgs: string[]): Pro
     const overrideUpdates = Object.fromEntries(plans.map((plan) => [plan.packageName, plan.targetVersion]))
 
     console.info(colorize('Applying protected singleton upgrades...', colors.cyan))
+    const previousPnpmVersion = await readRootPnpmPackageManagerVersion(runtime.cwd)
     await applyWorkspaceUpgrades(runtime, target, cooldownRejectList, selectedPackages)
     console.info(colorize('Updating protected dependency overrides...', colors.cyan))
     await updateProtectedOverrides(runtime.cwd, runtime.config.upgrade?.protectedOverridesFile ?? 'pnpm-workspace.yaml', overrideUpdates)
+    const useFreshPackageManager = await preparePackageManagerAfterManifestUpdates(runtime, previousPnpmVersion)
     console.info(colorize('Installing dependencies after protected singleton upgrades...', colors.cyan))
-    await installDependencies(runtime)
+    await installDependencies(runtime, useFreshPackageManager)
 
     if (runtime.config.upgrade?.singletonGuardCommand) {
       runConfiguredStep(runtime, runtime.config.upgrade.singletonGuardCommand)

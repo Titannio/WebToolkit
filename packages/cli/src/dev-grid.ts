@@ -64,16 +64,23 @@ function runStep(runtime: Runtime, step: TaskStepConfig): void {
 }
 
 function runFallback(runtime: Runtime, script: string, reason: string, dryRun: boolean): void {
+  const normalizedScript = normalizeFallbackScript(script)
   if (dryRun) {
-    process.stdout.write(`${JSON.stringify({ executable: runtime.config.packageManager, args: ['run', script], reason }, null, 2)}\n`)
+    process.stdout.write(`${JSON.stringify({ executable: runtime.config.packageManager, args: ['run', normalizedScript], reason }, null, 2)}\n`)
     process.exit(0)
   }
 
-  process.stderr.write(`${reason} Falling back to \`${runtime.config.packageManager} run ${script}\`.\n`)
+  process.stderr.write(`${reason} Falling back to \`${runtime.config.packageManager} run ${normalizedScript}\`.\n`)
   const executable = process.platform === 'win32' ? `${runtime.config.packageManager}.cmd` : runtime.config.packageManager
-  const result = spawnSync(executable, ['run', script], { cwd: runtime.cwd, stdio: 'inherit' })
+  const result = spawnSync(executable, ['run', normalizedScript], { cwd: runtime.cwd, stdio: 'inherit' })
   if (result.error) throw result.error
   process.exit(result.status ?? 1)
+}
+
+function normalizeFallbackScript(script: string): string {
+  const normalized = script.trim().replace(/\s+/gu, ' ')
+  const match = normalized.match(/^(?:npm|pnpm|yarn) run (.+)$/u)
+  return match ? match[1] : normalized
 }
 
 function sleep(milliseconds: number): void {

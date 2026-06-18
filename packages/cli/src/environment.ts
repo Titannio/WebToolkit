@@ -19,7 +19,7 @@ function findRepoRoot(startDir: string): string {
   }
 }
 
-function readRequiredPnpmVersion(repoRoot: string): string {
+export function readRequiredPnpmVersion(repoRoot: string): string {
   const packageJson = JSON.parse(fs.readFileSync(path.join(repoRoot, 'package.json'), 'utf8')) as { packageManager?: string }
   const packageManager = String(packageJson.packageManager || '')
   if (!packageManager.startsWith('pnpm@')) throw new Error(`Expected packageManager to start with pnpm@ but found ${JSON.stringify(packageManager)}.`)
@@ -91,6 +91,16 @@ function readTrimmedFile(filePath: string): string {
   return fs.existsSync(filePath) ? fs.readFileSync(filePath, 'utf8').trim() : ''
 }
 
+export function prepareCorepackPnpm(runtime: Runtime, repoRoot: string, version: string): void {
+  if (!version || version.includes(' ') || version === 'latest' || version === '11') {
+    throw new Error(`packageManager must pin an exact pnpm version, but found ${JSON.stringify(`pnpm@${version}`)}.`)
+  }
+
+  const corepack = resolveNodeSiblingBinary('corepack')
+  runCommand(corepack, ['enable'], repoRoot, runtime)
+  runCommand(corepack, ['prepare', `pnpm@${version}`, '--activate'], repoRoot, runtime)
+}
+
 export function runEnvBootstrap(runtime: Runtime): void {
   const repoRoot = findRepoRoot(runtime.cwd)
   const requiredPnpmVersion = readRequiredPnpmVersion(repoRoot)
@@ -106,8 +116,7 @@ export function runEnvBootstrap(runtime: Runtime): void {
     runCommand(process.execPath, [npmCliPath, 'install', '--global', '--force', 'corepack'], repoRoot, runtime)
   }
 
-  runCommand(corepack, ['enable'], repoRoot, runtime)
-  runCommand(corepack, ['prepare', `pnpm@${requiredPnpmVersion}`, '--activate'], repoRoot, runtime)
+  prepareCorepackPnpm(runtime, repoRoot, requiredPnpmVersion)
 
   console.info(`Node: ${process.versions.node}`)
   console.info(`npm: ${captureCommand(process.execPath, [npmCliPath, '--version'], repoRoot, runtime)}`)

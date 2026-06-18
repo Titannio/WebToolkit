@@ -35,6 +35,13 @@ export function buildPackageManagerCommand(packageManager: string, args: string[
   }
 }
 
+export function buildFreshPackageManagerCommand(packageManager: string, args: string[]): CommandSpec {
+  return {
+    command: process.platform === 'win32' && packageManager === 'pnpm' ? 'pnpm.cmd' : packageManager,
+    args,
+  }
+}
+
 const WINDOWS_CMD_WRAPPED_COMMANDS = new Set([
   'npm',
   'npm.cmd',

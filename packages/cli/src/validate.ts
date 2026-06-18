@@ -1,4 +1,5 @@
 import type { TaskStepConfig, WebToolkitCliConfig } from './config.js'
+import { executeBuiltinGuard } from './guard-runner.js'
 import { formatCommand, runCommandBuffered } from './process.js'
 
 type Runtime = {
@@ -7,19 +8,21 @@ type Runtime = {
 }
 
 async function runStepWithStatus(step: TaskStepConfig, runtime: Runtime): Promise<void> {
-  if (!step.command) {
-    throw new Error(`Validate step "${step.label}" must define command.`)
+  if (!step.command && !step.builtinGuard) {
+    throw new Error(`Validate step "${step.label}" must define command or builtinGuard.`)
   }
 
   const label = 'Running '
   process.stdout.write(`- ${label} \x1b[1m${step.label.padEnd(10)}\x1b[0m... `)
   const startedAt = Date.now()
-  const result = await runCommandBuffered({
-    command: step.command,
-    args: step.args ?? [],
-    cwd: step.cwd,
-    env: step.env,
-  }, runtime.cwd)
+  const result = step.builtinGuard
+    ? { code: executeBuiltinGuard(step.builtinGuard, step.args ?? [], runtime.cwd), output: '' }
+    : await runCommandBuffered({
+      command: step.command!,
+      args: step.args ?? [],
+      cwd: step.cwd,
+      env: step.env,
+    }, runtime.cwd)
   const duration = ((Date.now() - startedAt) / 1000).toFixed(1)
 
   if (result.code === 0) {
@@ -31,7 +34,10 @@ async function runStepWithStatus(step: TaskStepConfig, runtime: Runtime): Promis
   console.info(`\x1b[31mFALHA\x1b[0m (${duration}s)`)
   console.info(`\n\x1b[31mDetalhes da falha em\x1b[0m \x1b[1m${step.label}\x1b[0m:`)
   console.info('\x1b[90m' + '-'.repeat(process.stdout.columns || 50) + '\x1b[0m')
-  console.info(result.output.trim() || `Command failed: ${formatCommand(step.command, step.args ?? [])}`)
+  const commandText = step.builtinGuard
+    ? formatCommand('webtoolkit', ['guard', step.builtinGuard, ...(step.args ?? [])])
+    : formatCommand(step.command!, step.args ?? [])
+  console.info(result.output.trim() || `Command failed: ${commandText}`)
   console.info('\x1b[90m' + '-'.repeat(process.stdout.columns || 50) + '\x1b[0m\n')
   throw new Error(`Validate step "${step.label}" failed.`)
 }
