@@ -147,6 +147,46 @@ function normalizeNcuJson(raw: string): WorkspaceUpdates {
   ) as WorkspaceUpdates)
 }
 
+function parseJsonObjectFromCommandOutput(raw: string): Record<string, unknown> {
+  const start = raw.indexOf('{')
+  if (start === -1) throw new Error('No JSON object found.')
+
+  let depth = 0
+  let inString = false
+  let escaping = false
+
+  for (let index = start; index < raw.length; index += 1) {
+    const character = raw[index]
+
+    if (escaping) {
+      escaping = false
+      continue
+    }
+
+    if (character === '\\') {
+      escaping = inString
+      continue
+    }
+
+    if (character === '"') {
+      inString = !inString
+      continue
+    }
+
+    if (inString) continue
+
+    if (character === '{') depth += 1
+    if (character === '}') {
+      depth -= 1
+      if (depth === 0) {
+        return JSON.parse(raw.slice(start, index + 1)) as Record<string, unknown>
+      }
+    }
+  }
+
+  throw new Error('Unterminated JSON object.')
+}
+
 function toWorkspaceManifestPath(location: string, workspaceRoot: string): string | null {
   const relativeLocation = path.relative(workspaceRoot, location)
   if (relativeLocation.startsWith('..') || path.isAbsolute(relativeLocation)) return null
@@ -435,8 +475,9 @@ async function getReleaseDate(runtime: Runtime, packageName: string, version: st
   }
 
   try {
-    const times = JSON.parse(result.output) as Record<string, string>
+    const times = parseJsonObjectFromCommandOutput(result.output)
     const releaseTime = times[version]
+    if (typeof releaseTime !== 'string') return null
     if (!releaseTime) return null
     const releaseDate = new Date(releaseTime)
     return Number.isNaN(releaseDate.getTime()) ? null : releaseDate
@@ -567,7 +608,7 @@ export function parseYesNo(answer: string, defaultValue: boolean): boolean | nul
 }
 
 export function formatYesNoPrompt(icon: string, question: string, defaultValue: boolean): string {
-  return `${icon} ${question} [Y/N] ${defaultValue ? 'Y' : 'N'} `
+  return `${icon} ${question} ${defaultValue ? '[Y/n]' : '[y/N]'} `
 }
 
 async function promptYesNo(prompt: ReturnType<typeof createInterface>, question: string, defaultValue: boolean): Promise<boolean> {

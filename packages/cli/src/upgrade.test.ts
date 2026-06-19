@@ -55,9 +55,9 @@ afterEach(async () => {
 
 describe('upgrade prompts', () => {
   it('formats yes/no prompts with explicit defaults', () => {
-    expect(formatYesNoPrompt('❄', 'Cooldown enabled?', true)).toBe('❄ Cooldown enabled? [Y/N] Y ')
-    expect(formatYesNoPrompt('↗', 'Major upgrades?', false)).toBe('↗ Major upgrades? [Y/N] N ')
-    expect(formatYesNoPrompt('🔄', 'Protected singleton upgrades?', false)).toBe('🔄 Protected singleton upgrades? [Y/N] N ')
+    expect(formatYesNoPrompt('❄', 'Cooldown enabled?', true)).toBe('❄ Cooldown enabled? [Y/n] ')
+    expect(formatYesNoPrompt('↗', 'Major upgrades?', false)).toBe('↗ Major upgrades? [y/N] ')
+    expect(formatYesNoPrompt('🔄', 'Protected singleton upgrades?', false)).toBe('🔄 Protected singleton upgrades? [y/N] ')
   })
 
   it('parses English and Portuguese yes/no answers with a default', () => {
@@ -188,6 +188,66 @@ describe('upgrade cooldown', () => {
     const ncuUpgradeCommands = inheritedArgs.filter((args: string[]) => args.includes('ncu') && args.includes('-u'))
 
     expect(ncuUpgradeCommands).toContainEqual(expect.arrayContaining(['--reject', 'missing-time']))
+  })
+
+  it('reads npm release metadata when npm warnings are printed around the JSON payload', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-06-17T12:00:00.000Z'))
+    vi.spyOn(console, 'info').mockImplementation(() => undefined)
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    vi.spyOn(process.stdout, 'write').mockImplementation(() => true)
+
+    const root = await createTempRoot()
+    await writeFile(path.join(root, 'pnpm-workspace.yaml'), ['packages:', '  - "."', ''].join('\n'))
+    await writeFile(path.join(root, 'package.json'), JSON.stringify({
+      dependencies: {
+        'stable-dep': '^1.0.0',
+      },
+    }))
+
+    processMocks.runCommandBuffered.mockImplementation(async (spec: CommandSpec) => {
+      const args = spec.args ?? []
+
+      if (args.includes('outdated')) {
+        return bufferedResult(JSON.stringify({
+          'stable-dep': {
+            current: '1.0.0',
+            latest: '1.2.0',
+            dependentPackages: [{ location: root }],
+          },
+        }), 1)
+      }
+
+      if (args.includes('ncu') && args.includes('--jsonUpgraded')) {
+        return bufferedResult(JSON.stringify({ 'package.json': { 'stable-dep': '^1.2.0' } }))
+      }
+
+      if (args.includes('view')) {
+        return bufferedResult([
+          'npm warn Unknown project config "auto-install-peers".',
+          JSON.stringify({
+            '1.2.0': '2026-05-01T12:00:00.000Z',
+          }),
+          'npm warn Unknown project config "strict-peer-dependencies".',
+        ].join('\n'))
+      }
+
+      throw new Error(`Unexpected buffered command: ${spec.command} ${(spec.args ?? []).join(' ')}`)
+    })
+    processMocks.runCommandInherited.mockReturnValue(0)
+
+    await runUpgradeEngine({
+      cwd: root,
+      config: mergeConfig({
+        upgrade: {
+          defaultCooldownDays: 7,
+          protectedOverridesFile: 'pnpm-workspace.yaml',
+        },
+      }),
+    }, ['--yes'])
+
+    const inheritedArgs = processMocks.runCommandInherited.mock.calls.map((call) => (call[0] as CommandSpec).args ?? [])
+    expect(inheritedArgs.some((args: string[]) => args.includes('ncu') && args.includes('-u'))).toBe(true)
   })
 
   it('applies cooldown rejects to protected singleton upgrade candidates', async () => {
