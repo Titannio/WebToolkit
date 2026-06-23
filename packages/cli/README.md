@@ -190,6 +190,7 @@ Upgrade fields:
 - `protectedOverridesFile`: project-relative YAML file with top-level `overrides`, usually `pnpm-workspace.yaml`.
 - `protectedDependencyUpstreamHints`: map of protected package names to upstream packages that should be reviewed before isolated upgrades.
 - `singletonGuardCommand`: optional task step run after protected singleton upgrades.
+- The final upgrade summary reports packages that were not updated and groups them by the deciding filter, such as `Cooldown`, `Major`, or `Protected singleton`.
 
 Dev watch fields:
 

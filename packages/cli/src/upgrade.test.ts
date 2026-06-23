@@ -44,6 +44,14 @@ function bufferedResult(output: string, code = 0): CommandResult {
   return { code, output }
 }
 
+function stripAnsi(value: string): string {
+  return value.replace(/\x1b\[[0-9;]*m/gu, '')
+}
+
+function countMatches(haystack: string, needle: string): number {
+  return haystack.split(needle).length - 1
+}
+
 afterEach(async () => {
   vi.useRealTimers()
   vi.restoreAllMocks()
@@ -325,6 +333,128 @@ describe('upgrade cooldown', () => {
     expect(ncuUpgradeCommands).toContainEqual(expect.arrayContaining(['--reject', 'fresh-singleton']))
     expect(ncuUpgradeCommands.some((args: string[]) => args.includes('--filter') && args.includes('fresh-singleton'))).toBe(false)
   })
+
+  it('reports skipped packages by cooldown, major, and protected singleton without duplicates', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-06-17T12:00:00.000Z'))
+    const infoLines: string[] = []
+    vi.spyOn(console, 'info').mockImplementation((message?: unknown) => {
+      infoLines.push(String(message ?? ''))
+      return undefined
+    })
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    vi.spyOn(process.stdout, 'write').mockImplementation(() => true)
+
+    const root = await createTempRoot()
+    await writeFile(path.join(root, 'pnpm-workspace.yaml'), [
+      'packages:',
+      '  - "."',
+      'overrides:',
+      '  protected-hold: ^1.0.0',
+      '  protected-major: ^1.0.0',
+      '  protected-recent: ^1.0.0',
+      '',
+    ].join('\n'))
+    await writeFile(path.join(root, 'package.json'), JSON.stringify({
+      dependencies: {
+        'stable-update': '^1.0.0',
+        'cooldown-dep': '^1.0.0',
+        'protected-hold': '^1.0.0',
+        'protected-major': '^1.0.0',
+        'protected-recent': '^1.0.0',
+      },
+    }))
+
+    processMocks.runCommandBuffered.mockImplementation(async (spec: CommandSpec) => {
+      const args = spec.args ?? []
+      const target = args.includes('--target') ? args[args.indexOf('--target') + 1] : null
+
+      if (args.includes('outdated')) {
+        return bufferedResult(JSON.stringify({
+          'stable-update': {
+            current: '1.0.0',
+            latest: '1.2.0',
+            dependentPackages: [{ location: root }],
+          },
+          'cooldown-dep': {
+            current: '1.0.0',
+            latest: '1.1.0',
+            dependentPackages: [{ location: root }],
+          },
+          'protected-hold': {
+            current: '1.0.0',
+            latest: '1.3.0',
+            dependentPackages: [{ location: root }],
+          },
+          'protected-major': {
+            current: '1.0.0',
+            latest: '2.0.0',
+            dependentPackages: [{ location: root }],
+          },
+          'protected-recent': {
+            current: '1.0.0',
+            latest: '1.1.0',
+            dependentPackages: [{ location: root }],
+          },
+        }), 1)
+      }
+
+      if (args.includes('ncu') && args.includes('--jsonUpgraded')) {
+        const rejects = args.includes('--reject') ? args[args.indexOf('--reject') + 1].split(',') : []
+        const updates: Record<string, string> = {}
+        const assignIfAllowed = (packageName: string, version: string): void => {
+          if (!rejects.includes(packageName)) updates[packageName] = version
+        }
+
+        assignIfAllowed('stable-update', '^1.2.0')
+        assignIfAllowed('cooldown-dep', '^1.1.0')
+        assignIfAllowed('protected-hold', '^1.3.0')
+        assignIfAllowed('protected-recent', '^1.1.0')
+        if (target === 'latest') assignIfAllowed('protected-major', '^2.0.0')
+        return bufferedResult(JSON.stringify({ 'package.json': updates }))
+      }
+
+      if (args.includes('view')) {
+        const packageName = args[args.indexOf('view') + 1]
+        const timesByPackage: Record<string, Record<string, string>> = {
+          'stable-update': { '1.2.0': '2026-05-01T12:00:00.000Z' },
+          'cooldown-dep': { '1.1.0': '2026-06-16T12:00:00.000Z' },
+          'protected-hold': { '1.3.0': '2026-05-10T12:00:00.000Z' },
+          'protected-recent': { '1.1.0': '2026-06-16T12:00:00.000Z' },
+        }
+        return bufferedResult(JSON.stringify(timesByPackage[packageName] ?? {}))
+      }
+
+      throw new Error(`Unexpected buffered command: ${spec.command} ${(spec.args ?? []).join(' ')}`)
+    })
+    processMocks.runCommandInherited.mockReturnValue(0)
+
+    await runUpgradeEngine({
+      cwd: root,
+      config: mergeConfig({
+        upgrade: {
+          defaultCooldownDays: 7,
+          protectedOverridesFile: 'pnpm-workspace.yaml',
+          protectedDependencyUpstreamHints: {
+            'protected-hold': ['shared-upstream'],
+          },
+        },
+      }),
+    }, ['--yes'])
+
+    const output = stripAnsi(infoLines.join('\n'))
+    expect(output).toContain('Not updated')
+    expect(output).toContain('Cooldown')
+    expect(output).toContain('Major')
+    expect(output).toContain('Protected singleton')
+    expect(output).toContain('cooldown-dep: ^1.0.0 -> ^1.1.0')
+    expect(output).toContain('protected-recent: ^1.0.0 -> ^1.1.0')
+    expect(output).toContain('protected-major: ^1.0.0 -> ^2.0.0')
+    expect(output).toContain('protected-hold: ^1.0.0 -> ^1.3.0')
+    expect(output).toContain('protected-hold: review/update shared-upstream before upgrading.')
+    expect(countMatches(output, 'protected-recent: ^1.0.0 -> ^1.1.0')).toBe(1)
+    expect(countMatches(output, 'protected-major: ^1.0.0 -> ^2.0.0')).toBe(1)
+  })
 })
 
 describe('upgrade package manager install', () => {
@@ -412,5 +542,76 @@ describe('upgrade package manager install', () => {
         process.env.npm_execpath = originalNpmExecPath
       }
     }
+  })
+
+  it('omits major skip reporting when --major is enabled and upgrades protected singletons with --isolated', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-06-17T12:00:00.000Z'))
+    const infoLines: string[] = []
+    vi.spyOn(console, 'info').mockImplementation((message?: unknown) => {
+      infoLines.push(String(message ?? ''))
+      return undefined
+    })
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    vi.spyOn(process.stdout, 'write').mockImplementation(() => true)
+
+    const root = await createTempRoot()
+    await writeFile(path.join(root, 'pnpm-workspace.yaml'), [
+      'packages:',
+      '  - "."',
+      'overrides:',
+      '  protected-major: ^1.0.0',
+      '',
+    ].join('\n'))
+    await writeFile(path.join(root, 'package.json'), JSON.stringify({
+      dependencies: {
+        'protected-major': '^1.0.0',
+      },
+    }))
+
+    processMocks.runCommandBuffered.mockImplementation(async (spec: CommandSpec) => {
+      const args = spec.args ?? []
+      const target = args.includes('--target') ? args[args.indexOf('--target') + 1] : null
+
+      if (args.includes('outdated')) {
+        return bufferedResult(JSON.stringify({
+          'protected-major': {
+            current: '1.0.0',
+            latest: '2.0.0',
+            dependentPackages: [{ location: root }],
+          },
+        }), 1)
+      }
+
+      if (args.includes('ncu') && args.includes('--jsonUpgraded')) {
+        const updates = target === 'latest' ? { 'protected-major': '^2.0.0' } : {}
+        return bufferedResult(JSON.stringify({ 'package.json': updates }))
+      }
+
+      throw new Error(`Unexpected buffered command: ${spec.command} ${(spec.args ?? []).join(' ')}`)
+    })
+    processMocks.runCommandInherited.mockImplementation((spec: CommandSpec) => {
+      const args = spec.args ?? []
+
+      if (args.includes('ncu') && args.includes('-u')) return 0
+      if (args.includes('install')) return 0
+      throw new Error(`Unexpected inherited command: ${spec.command} ${args.join(' ')}`)
+    })
+
+    await runUpgradeEngine({
+      cwd: root,
+      config: mergeConfig({
+        upgrade: {
+          defaultCooldownDays: 0,
+          protectedOverridesFile: 'pnpm-workspace.yaml',
+        },
+      }),
+    }, ['--yes', '--major', '--isolated'])
+
+    const output = stripAnsi(infoLines.join('\n'))
+    expect(output).not.toContain('Not updated')
+    expect(output).not.toContain('Major')
+    expect(output).toContain('Protected singleton upgrades')
+    expect(output).toContain('protected-major: ^1.0.0 -> ^2.0.0')
   })
 })

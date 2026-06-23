@@ -32,6 +32,11 @@ type UpgradeEntry = {
   targetVersion: string
 }
 
+type SkippedUpgradeReason = 'cooldown' | 'major' | 'protected-singleton'
+type SkippedUpgradeEntry = UpgradeEntry & {
+  reason: SkippedUpgradeReason
+}
+
 type ProtectedUpgradePlan = {
   packageName: string
   currentOverride: string | null
@@ -50,6 +55,17 @@ const colors = {
 }
 
 const manifestVersionFields = ['dependencies', 'devDependencies', 'peerDependencies', 'optionalDependencies'] as const
+const skippedReasonOrder: SkippedUpgradeReason[] = ['cooldown', 'major', 'protected-singleton']
+const skippedReasonLabels: Record<SkippedUpgradeReason, string> = {
+  cooldown: 'Cooldown',
+  major: 'Major',
+  'protected-singleton': 'Protected singleton',
+}
+const skippedReasonPriority: Record<SkippedUpgradeReason, number> = {
+  cooldown: 0,
+  major: 1,
+  'protected-singleton': 2,
+}
 
 function colorize(value: string, color: string): string {
   return `${color}${value}${colors.reset}`
@@ -275,6 +291,55 @@ function buildUpgradeEntries(
   }
 
   return entries
+}
+
+function buildSkippedUpgradeEntries(
+  updatesByFile: WorkspaceUpdates,
+  reason: SkippedUpgradeReason,
+  resolveCurrentVersion: (filePath: string, packageName: string, targetVersion: string) => string | null,
+): SkippedUpgradeEntry[] {
+  return buildUpgradeEntries(updatesByFile, resolveCurrentVersion).map((entry) => ({
+    ...entry,
+    reason,
+  }))
+}
+
+function getUpgradeEntryKey(filePath: string, packageName: string): string {
+  return `${filePath}::${packageName}`
+}
+
+function filterWorkspaceUpdatesByPackageNames(updatesByFile: WorkspaceUpdates, packageNames: Set<string>): WorkspaceUpdates {
+  return sortUpdatesByFile(Object.fromEntries(
+    Object.entries(updatesByFile)
+      .map(([filePath, updates]) => [
+        filePath,
+        Object.fromEntries(Object.entries(updates).filter(([packageName]) => packageNames.has(packageName))),
+      ])
+      .filter(([, updates]) => Object.keys(updates).length > 0),
+  ) as WorkspaceUpdates)
+}
+
+function subtractWorkspaceUpdates(minuend: WorkspaceUpdates, subtrahend: WorkspaceUpdates): WorkspaceUpdates {
+  return sortUpdatesByFile(Object.fromEntries(
+    Object.entries(minuend)
+      .map(([filePath, updates]) => [
+        filePath,
+        Object.fromEntries(
+          Object.entries(updates).filter(([packageName]) => !(packageName in (subtrahend[filePath] ?? {}))),
+        ),
+      ])
+      .filter(([, updates]) => Object.keys(updates).length > 0),
+  ) as WorkspaceUpdates)
+}
+
+function addSkippedEntries(target: Map<string, SkippedUpgradeEntry>, entries: SkippedUpgradeEntry[]): void {
+  for (const entry of entries) {
+    const key = getUpgradeEntryKey(entry.filePath, entry.packageName)
+    const existing = target.get(key)
+    if (!existing || skippedReasonPriority[entry.reason] < skippedReasonPriority[existing.reason]) {
+      target.set(key, entry)
+    }
+  }
 }
 
 function readProtectedOverrides(rootDir: string, relativeFilePath: string): Record<string, string> {
@@ -647,6 +712,27 @@ export async function runUpgradeEngine(runtime: Runtime, rawArgs: string[]): Pro
 
   console.info(colorize('Checking eligible dependency updates...', colors.cyan))
   const cooldownRejectList = await getCooldownRejectList(runtime, options.days, target)
+  const currentTargetCandidates = await collectUpgradeCandidates(runtime, target, [], true)
+  const cooldownHoldUpdates = filterWorkspaceUpdatesByPackageNames(currentTargetCandidates, new Set(cooldownRejectList))
+  const cooldownHoldVersionsByFile = await getManifestVersionsByFile(cooldownHoldUpdates, runtime.cwd)
+  const skippedEntriesByKey = new Map<string, SkippedUpgradeEntry>()
+  addSkippedEntries(skippedEntriesByKey, buildSkippedUpgradeEntries(
+    cooldownHoldUpdates,
+    'cooldown',
+    (filePath, packageName) => cooldownHoldVersionsByFile[filePath]?.[packageName] ?? null,
+  ))
+
+  if (!options.allowMajor) {
+    const latestCandidates = await collectUpgradeCandidates(runtime, 'latest', [], true)
+    const majorHoldUpdates = subtractWorkspaceUpdates(latestCandidates, currentTargetCandidates)
+    const majorHoldVersionsByFile = await getManifestVersionsByFile(majorHoldUpdates, runtime.cwd)
+    addSkippedEntries(skippedEntriesByKey, buildSkippedUpgradeEntries(
+      majorHoldUpdates,
+      'major',
+      (filePath, packageName) => majorHoldVersionsByFile[filePath]?.[packageName] ?? null,
+    ))
+  }
+
   const upgradeCandidates = await collectUpgradeCandidates(runtime, target, cooldownRejectList)
   const versionsByFile = await getManifestVersionsByFile(upgradeCandidates, runtime.cwd)
   const updatedEntries = buildUpgradeEntries(upgradeCandidates, (filePath, packageName) => versionsByFile[filePath]?.[packageName] ?? null)
@@ -687,6 +773,11 @@ export async function runUpgradeEngine(runtime: Runtime, rawArgs: string[]): Pro
     protectedHoldEntries = protectedHoldEntries.filter((entry) => !selected.has(entry.packageName))
   }
 
+  addSkippedEntries(skippedEntriesByKey, protectedHoldEntries.map((entry) => ({
+    ...entry,
+    reason: 'protected-singleton',
+  })))
+
   console.info('')
   console.info(colorize('Upgrade complete', `${colors.bright}${colors.green}`))
   console.info('')
@@ -697,30 +788,34 @@ export async function runUpgradeEngine(runtime: Runtime, rawArgs: string[]): Pro
     for (const line of formatEntryGroups(updatedEntries)) console.info(`- ${line}`)
   }
 
-  if (options.days > 0) {
+  const skippedEntries = Array.from(skippedEntriesByKey.values())
+  if (skippedEntries.length > 0) {
+    const hints = runtime.config.upgrade?.protectedDependencyUpstreamHints ?? {}
     console.info('')
-    console.info(colorize('Cooldown holds', colors.bright))
-    console.info(`- ${cooldownRejectList.length} package(s) skipped by ${options.days}-day cooldown.`)
+    console.info(colorize('Not updated', colors.bright))
+
+    for (const reason of skippedReasonOrder) {
+      const reasonEntries = skippedEntries.filter((entry) => entry.reason === reason)
+      if (reasonEntries.length === 0) continue
+
+      console.info(`- ${colorize(skippedReasonLabels[reason], colors.yellow)}`)
+      for (const line of formatEntryGroups(reasonEntries)) console.info(`  ${line}`)
+
+      if (reason !== 'protected-singleton') continue
+
+      for (const packageName of uniqueSorted(reasonEntries.map((entry) => entry.packageName))) {
+        const upstreamPackages = hints[packageName] ?? []
+        if (upstreamPackages.length > 0) {
+          console.info(`  ${colorize(packageName, colors.cyan)}: review/update ${colorize(upstreamPackages.join(', '), colors.bright)} before upgrading.`)
+        }
+      }
+    }
   }
 
   if (protectedUpgradedEntries.length > 0) {
     console.info('')
     console.info(colorize('Protected singleton upgrades', colors.bright))
     for (const line of formatEntryGroups(protectedUpgradedEntries)) console.info(`- ${line}`)
-  }
-
-  if (protectedHoldEntries.length > 0) {
-    const hints = runtime.config.upgrade?.protectedDependencyUpstreamHints ?? {}
-    console.info('')
-    console.info(colorize('Protected singleton holds', colors.bright))
-    for (const line of formatEntryGroups(protectedHoldEntries)) console.info(`- ${line}`)
-
-    for (const packageName of uniqueSorted(protectedHoldEntries.map((entry) => entry.packageName))) {
-      const upstreamPackages = hints[packageName] ?? []
-      if (upstreamPackages.length > 0) {
-        console.info(`- ${colorize(packageName, colors.cyan)}: review/update ${colorize(upstreamPackages.join(', '), colors.bright)} before upgrading.`)
-      }
-    }
   }
 
   if (options.verbose) {
