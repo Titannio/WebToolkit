@@ -151,10 +151,13 @@ export type DevGridPaneConfig = {
   title: string
   command: string
   silentCommand?: string
+  fontSize?: number
+  fullWidth?: boolean
 }
 
 export type DevGridConfig = {
   panes: DevGridPaneConfig[]
+  maxPanels?: number
   fallbackScript?: string
   silentFallbackScript?: string
   preflightCommand?: TaskStepConfig

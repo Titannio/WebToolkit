@@ -203,6 +203,10 @@ Dev watch fields:
 Dev grid fields:
 
 - `panes`: ordered terminal panes with `title`, `command`, and optional `silentCommand`.
+- `maxPanels`: optional positive integer. When defined, limits how many configured panes are opened.
+- each pane can optionally define:
+  - `fontSize`: positive integer font size for that pane.
+  - `fullWidth`: when `true`, forces the pane to occupy a full-width row.
 - `fallbackScript` and `silentFallbackScript`: package scripts used when Windows Terminal is unavailable.
 - `preflightCommand`: optional task step run before opening the grid.
 
@@ -402,11 +406,13 @@ Dev and environment engines:
       {
         "title": "FRONTEND USER",
         "command": "pnpm run dev:frontend-user",
-        "silentCommand": "pnpm run dev:frontend-user:silent"
+        "silentCommand": "pnpm run dev:frontend-user:silent",
+        "fontSize": 15
       },
       {
         "title": "BACKEND",
-        "command": "pnpm run dev:backend"
+        "command": "pnpm run dev:backend",
+        "fullWidth": true
       }
     ]
   },

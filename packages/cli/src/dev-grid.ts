@@ -22,9 +22,16 @@ function createPaneCommand(command: string): string[] {
   return [getPowerShellExecutable(), '-NoLogo', '-NoExit', '-Command', command]
 }
 
-function createPaneArgs(repoRoot: string, subcommand: string, orientation: string | null, pane: DevGridPaneConfig, silent: boolean): string[] {
+function createPaneArgs(
+  repoRoot: string,
+  subcommand: string,
+  orientation: string | null,
+  pane: DevGridPaneConfig,
+  silent: boolean,
+): string[] {
   const args = [subcommand]
   if (orientation) args.push(orientation)
+  if (pane.fontSize !== undefined) args.push('--fontSize', String(pane.fontSize))
   args.push(
     '--startingDirectory',
     repoRoot,
@@ -36,15 +43,76 @@ function createPaneArgs(repoRoot: string, subcommand: string, orientation: strin
   return args
 }
 
+function getValidatedDevGridPanes(panes: DevGridPaneConfig[], maxPanels: number | undefined): DevGridPaneConfig[] {
+  if (maxPanels !== undefined && (!Number.isInteger(maxPanels) || maxPanels <= 0)) {
+    throw new Error('devGrid.maxPanels must be a positive integer.')
+  }
+
+  const validatedPanes = maxPanels === undefined ? panes : panes.slice(0, maxPanels)
+  if (!validatedPanes.length) {
+    throw new Error('devGrid.panes is not configured.')
+  }
+
+  const fullWidthIndexes = validatedPanes.flatMap((pane, index) => (pane.fullWidth ? [index] : []))
+  if (fullWidthIndexes.length > 1) {
+    throw new Error('devGrid supports at most one pane with fullWidth: true.')
+  }
+
+  for (const pane of validatedPanes) {
+    if (pane.fontSize === undefined) continue
+    if (!Number.isInteger(pane.fontSize) || pane.fontSize <= 0) {
+      throw new Error(`devGrid pane "${pane.title}" has invalid fontSize ${String(pane.fontSize)}. Use a positive integer.`)
+    }
+  }
+
+  return validatedPanes
+}
+
 function createWindowsTerminalCommands(repoRoot: string, panes: DevGridPaneConfig[], silent: boolean, windowName: string): string[][] {
-  const [firstPane, secondPane, thirdPane, fourthPane] = panes
+  const fullWidthIndex = panes.findIndex((pane) => pane.fullWidth)
+  const rows: DevGridPaneConfig[][] = []
+
+  if (fullWidthIndex === -1) {
+    for (let i = 0; i < panes.length; i += 2) {
+      rows.push(panes.slice(i, i + 2))
+    }
+  } else {
+    const beforeFullWidth = panes.slice(0, fullWidthIndex)
+    const fullWidthPane = panes[fullWidthIndex]
+    const afterFullWidth = panes.slice(fullWidthIndex + 1)
+
+    for (let i = 0; i < beforeFullWidth.length; i += 2) {
+      rows.push(beforeFullWidth.slice(i, i + 2))
+    }
+    rows.push([fullWidthPane])
+    for (let i = 0; i < afterFullWidth.length; i += 2) {
+      rows.push(afterFullWidth.slice(i, i + 2))
+    }
+  }
+
+  const [firstRow, ...remainingRows] = rows
+  const firstPane = firstRow[0]
   const commands: string[][] = [
     ['--window', windowName, '--maximized', ...createPaneArgs(repoRoot, 'new-tab', null, firstPane, silent)],
   ]
 
-  if (secondPane) commands.push(['--window', windowName, ...createPaneArgs(repoRoot, 'split-pane', '--vertical', secondPane, silent)])
-  if (thirdPane) commands.push(['--window', windowName, 'move-focus', 'left'], ['--window', windowName, ...createPaneArgs(repoRoot, 'split-pane', '--horizontal', thirdPane, silent)])
-  if (fourthPane) commands.push(['--window', windowName, 'move-focus', 'up'], ['--window', windowName, 'move-focus', 'right'], ['--window', windowName, ...createPaneArgs(repoRoot, 'split-pane', '--horizontal', fourthPane, silent)])
+  if (firstRow[1]) {
+    commands.push(['--window', windowName, ...createPaneArgs(repoRoot, 'split-pane', '--vertical', firstRow[1], silent)])
+  }
+
+  let previousRow = firstRow
+  for (const row of remainingRows) {
+    if (previousRow.length === 2) {
+      commands.push(['--window', windowName, 'move-focus', 'left'])
+    }
+
+    const [leftPane, rightPane] = row
+    commands.push(['--window', windowName, ...createPaneArgs(repoRoot, 'split-pane', '--horizontal', leftPane, silent)])
+    if (rightPane) {
+      commands.push(['--window', windowName, ...createPaneArgs(repoRoot, 'split-pane', '--vertical', rightPane, silent)])
+    }
+    previousRow = row
+  }
 
   return commands
 }
@@ -91,6 +159,7 @@ export function runDevGrid(runtime: Runtime, rawArgs: string[]): void {
   const config = runtime.config.devGrid
   if (!config?.panes?.length) throw new Error('devGrid.panes is not configured.')
 
+  const validatedPanes = getValidatedDevGridPanes(config.panes, config.maxPanels)
   const silent = rawArgs.includes('--silent')
   const dryRun = rawArgs.includes('--dry-run')
   const fallbackScript = silent ? config.silentFallbackScript ?? config.fallbackScript : config.fallbackScript
@@ -110,7 +179,7 @@ export function runDevGrid(runtime: Runtime, rawArgs: string[]): void {
   }
 
   const windowName = `webtoolkit-dev-grid-${Date.now()}-${process.pid}`
-  const commands = createWindowsTerminalCommands(runtime.cwd, config.panes, silent, windowName)
+  const commands = createWindowsTerminalCommands(runtime.cwd, validatedPanes, silent, windowName)
 
   if (dryRun) {
     process.stdout.write(`${JSON.stringify({ executable: 'wt.exe', commands }, null, 2)}\n`)
