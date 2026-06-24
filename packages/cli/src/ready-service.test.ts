@@ -1,11 +1,37 @@
 import type { ClientRequest, IncomingMessage } from 'node:http'
 import { createServer } from 'node:http'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { mergeConfig } from './config.js'
 
 type HttpGet = (url: string | URL, onConnected: (response: IncomingMessage) => void) => ClientRequest
 let mockedHttpGet: HttpGet | null = null
 let mockedHttpsGet: HttpGet | null = null
+
+const readinessEnvKeys = [
+  'BACKEND_READY_INTERVAL_MS',
+  'BACKEND_READY_TIMEOUT_MS',
+  'BACKEND_READY_URL',
+  'READY_SERVICE_NAME',
+  'VITE_API_URL',
+] as const
+
+const originalReadinessEnv = new Map<string, string | undefined>(
+  readinessEnvKeys.map((key) => [key, process.env[key]]),
+)
+
+function clearReadinessEnv() {
+  for (const key of readinessEnvKeys) {
+    delete process.env[key]
+  }
+}
+
+function restoreReadinessEnv() {
+  for (const key of readinessEnvKeys) {
+    const value = originalReadinessEnv.get(key)
+    if (value === undefined) delete process.env[key]
+    else process.env[key] = value
+  }
+}
 
 vi.mock('node:http', async (importOriginal) => {
   const actual = await importOriginal<typeof import('node:http')>()
@@ -58,6 +84,19 @@ function buildReadyServer(statusCode: number, body: string, delay = 0) {
 }
 
 describe('ready service waiting', () => {
+  beforeEach(() => {
+    mockedHttpGet = null
+    mockedHttpsGet = null
+    clearReadinessEnv()
+  })
+
+  afterEach(() => {
+    mockedHttpGet = null
+    mockedHttpsGet = null
+    vi.restoreAllMocks()
+    restoreReadinessEnv()
+  })
+
   it('skips readiness checks when skip flag is set', async () => {
     const consoleInfo = vi.spyOn(console, 'info').mockImplementation(() => undefined)
     await runReadyService(runtimeWithConfig('/repo'), ['--skip-ready-check'])
@@ -121,29 +160,43 @@ describe('ready service waiting', () => {
   })
 
   it('fails when /ready endpoint returns invalid JSON', async () => {
-    const server = createServer((request, response) => {
-      if (request.url === '/ready') {
-        response.statusCode = 200
-        response.end('not-json')
-        return
-      }
-      response.statusCode = 404
-      response.end('not found')
-    })
-    const port = 41531 + Math.floor(Math.random() * 100)
-    await new Promise<void>((resolve) => server.listen(port, '127.0.0.1', resolve))
     const processExit = vi.spyOn(process, 'exit').mockImplementation(() => undefined as never)
+    let nowMs = 0
+    const now = vi.spyOn(Date, 'now').mockImplementation(() => {
+      nowMs += 2
+      return nowMs
+    })
+
+    mockedHttpGet = (_url, onConnected) => {
+      const response = {
+        statusCode: 200,
+        on: vi.fn((event: string, handler: (chunk: Buffer) => void) => {
+          if (event === 'data') handler(Buffer.from('not-json'))
+          if (event === 'end') handler(Buffer.from(''))
+          return response
+        }),
+      } as unknown as IncomingMessage
+
+      const request: ClientRequest = {
+        on: vi.fn(() => request),
+        setTimeout: vi.fn(),
+      } as unknown as ClientRequest
+
+      onConnected(response)
+      return request
+    }
 
     try {
       await runReadyService(
         runtimeWithConfig('/repo'),
-        ['--url', `http://127.0.0.1:${port}`, '--timeout-ms=1', '--interval-ms=1'],
+        ['--url', 'http://example.com', '--timeout-ms=10', '--interval-ms=1'],
       )
 
       expect(processExit).toHaveBeenCalledWith(1)
     } finally {
+      mockedHttpGet = null
+      now.mockRestore()
       processExit.mockRestore()
-      await new Promise<void>((resolve) => server.close(() => resolve()))
     }
   })
 
@@ -229,7 +282,7 @@ describe('ready service waiting', () => {
 
       await runReadyService(
         runtimeWithConfig('/repo'),
-        ['--url', `http://127.0.0.1:${port}`, '--timeout-ms=50', '--interval-ms=1'],
+        ['--url', `http://127.0.0.1:${port}`, '--timeout-ms=never', '--interval-ms=1'],
       )
 
       expect(hits).toBe(2)

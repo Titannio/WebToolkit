@@ -205,7 +205,7 @@ Dev grid fields:
 - `panes`: ordered terminal panes with `title`, `command`, and optional `silentCommand`.
 - `maxPanels`: optional positive integer. When defined, limits how many configured panes are opened.
 - each pane can optionally define:
-  - `fontSize`: positive integer font size for that pane.
+  - `fontSize`: positive integer font size for that pane. The CLI applies it through a temporary Windows Terminal fragment profile.
   - `fullWidth`: when `true`, forces the pane to occupy a full-width row.
 - `fallbackScript` and `silentFallbackScript`: package scripts used when Windows Terminal is unavailable.
 - `preflightCommand`: optional task step run before opening the grid.

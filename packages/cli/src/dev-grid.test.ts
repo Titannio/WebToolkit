@@ -1,4 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 
 import { runDevGrid } from './dev-grid.js'
 import { mergeConfig } from './config.js'
@@ -25,12 +28,19 @@ import { runCommandInherited } from './process.js'
 const runtimeWithConfig = (cwd: string, config: Parameters<typeof mergeConfig>[0]) => ({ cwd, config: mergeConfig(config) })
 type SpawnSyncCall = { command: string; args: string[]; options: unknown }
 const spawnCalls: SpawnSyncCall[] = []
+const temporaryDirectories: string[] = []
+const originalLocalAppData = process.env.LOCALAPPDATA
 
 afterEach(() => {
   vi.restoreAllMocks()
   vi.mocked(spawnSync).mockReset()
   vi.mocked(runCommandInherited).mockReset()
   spawnCalls.length = 0
+  if (originalLocalAppData === undefined) delete process.env.LOCALAPPDATA
+  else process.env.LOCALAPPDATA = originalLocalAppData
+  for (const directory of temporaryDirectories.splice(0)) {
+    rmSync(directory, { recursive: true, force: true })
+  }
 })
 
 describe('dev-grid runtime', () => {
@@ -120,7 +130,7 @@ describe('dev-grid runtime', () => {
     platform.mockRestore()
   })
 
-  it('adds per-pane font size to generated pane args', async () => {
+  it('uses a temporary Windows Terminal profile when a pane defines fontSize', async () => {
     const platform = vi.spyOn(process, 'platform', 'get').mockReturnValue('win32' as NodeJS.Platform)
     vi.mocked(spawnSync).mockImplementation((command, args, options) => {
       spawnCalls.push({
@@ -135,6 +145,9 @@ describe('dev-grid runtime', () => {
     })
 
     vi.mocked(runCommandInherited).mockReturnValue(0)
+    const localAppData = mkdtempSync(join(tmpdir(), 'webtoolkit-dev-grid-'))
+    temporaryDirectories.push(localAppData)
+    process.env.LOCALAPPDATA = localAppData
 
     await runDevGrid(runtimeWithConfig('/repo', {
       packageManager: 'pnpm',
@@ -147,7 +160,19 @@ describe('dev-grid runtime', () => {
 
     const wtCalls = spawnCalls.filter((entry) => entry.command === 'wt.exe')
     expect(wtCalls).toHaveLength(1)
-    expect(wtCalls[0].args).toEqual(expect.arrayContaining(['--fontSize', '16']))
+    expect(wtCalls[0].args).toEqual(expect.arrayContaining(['--profile']))
+    expect(wtCalls[0].args).toEqual(expect.arrayContaining(['--startingDirectory', '/repo', '--title', 'A']))
+
+    const fragmentPath = join(localAppData, 'Microsoft', 'Windows Terminal', 'Fragments', 'WebToolkit.Cli', 'dev-grid.json')
+    expect(JSON.parse(readFileSync(fragmentPath, 'utf8'))).toEqual({
+      profiles: [
+        expect.objectContaining({
+          hidden: true,
+          fontSize: 16,
+          commandline: 'pwsh',
+        }),
+      ],
+    })
     platform.mockRestore()
   })
 

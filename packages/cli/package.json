@@ -1,6 +1,6 @@
 {
   "name": "@titannio/webtoolkit-cli",
-  "version": "1.2.5",
+  "version": "1.2.6",
   "private": false,
   "description": "Portable CLI tools for TypeScript monorepos and web projects.",
   "keywords": [

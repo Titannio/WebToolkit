@@ -1,4 +1,7 @@
+import { createHash } from 'node:crypto'
 import { spawnSync } from 'node:child_process'
+import { mkdirSync, writeFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
 
 import type { DevGridPaneConfig, TaskStepConfig, WebToolkitCliConfig } from './config.js'
 import { runCommandInherited } from './process.js'
@@ -7,6 +10,9 @@ type Runtime = {
   cwd: string
   config: WebToolkitCliConfig
 }
+
+const WINDOWS_TERMINAL_FRAGMENT_APP_NAME = 'WebToolkit.Cli'
+const WINDOWS_TERMINAL_FRAGMENT_FILE_NAME = 'dev-grid.json'
 
 function getPowerShellExecutable(): string {
   const pwshResult = spawnSync('where.exe', ['pwsh'], { stdio: 'ignore', windowsHide: true })
@@ -28,10 +34,11 @@ function createPaneArgs(
   orientation: string | null,
   pane: DevGridPaneConfig,
   silent: boolean,
+  profileName?: string,
 ): string[] {
   const args = [subcommand]
   if (orientation) args.push(orientation)
-  if (pane.fontSize !== undefined) args.push('--fontSize', String(pane.fontSize))
+  if (profileName) args.push('--profile', profileName)
   args.push(
     '--startingDirectory',
     repoRoot,
@@ -68,7 +75,57 @@ function getValidatedDevGridPanes(panes: DevGridPaneConfig[], maxPanels: number 
   return validatedPanes
 }
 
-function createWindowsTerminalCommands(repoRoot: string, panes: DevGridPaneConfig[], silent: boolean, windowName: string): string[][] {
+function getWindowsTerminalFragmentFilePath(): string {
+  const localAppData = process.env.LOCALAPPDATA
+  if (!localAppData) {
+    throw new Error('LOCALAPPDATA is not defined. Cannot configure Windows Terminal fragment profiles for devGrid.')
+  }
+
+  return join(
+    localAppData,
+    'Microsoft',
+    'Windows Terminal',
+    'Fragments',
+    WINDOWS_TERMINAL_FRAGMENT_APP_NAME,
+    WINDOWS_TERMINAL_FRAGMENT_FILE_NAME,
+  )
+}
+
+function buildPaneProfileName(repoRoot: string, pane: DevGridPaneConfig): string {
+  const hash = createHash('sha1')
+    .update(`${repoRoot}\n${pane.title}\n${String(pane.fontSize)}`)
+    .digest('hex')
+    .slice(0, 12)
+
+  return `WebToolkit Dev Grid ${hash}`
+}
+
+function preparePaneProfiles(repoRoot: string, panes: DevGridPaneConfig[]): Map<DevGridPaneConfig, string> {
+  const panesWithFontSize = panes.filter((pane) => pane.fontSize !== undefined)
+  if (!panesWithFontSize.length) return new Map()
+
+  const fragmentFilePath = getWindowsTerminalFragmentFilePath()
+  mkdirSync(dirname(fragmentFilePath), { recursive: true })
+
+  const profiles = panesWithFontSize.map((pane) => ({
+    name: buildPaneProfileName(repoRoot, pane),
+    hidden: true,
+    commandline: getPowerShellExecutable(),
+    fontSize: pane.fontSize,
+  }))
+
+  writeFileSync(fragmentFilePath, `${JSON.stringify({ profiles }, null, 2)}\n`, 'utf8')
+
+  return new Map(profiles.map((profile, index) => [panesWithFontSize[index], profile.name]))
+}
+
+function createWindowsTerminalCommands(
+  repoRoot: string,
+  panes: DevGridPaneConfig[],
+  silent: boolean,
+  windowName: string,
+  paneProfiles: Map<DevGridPaneConfig, string>,
+): string[][] {
   const fullWidthIndex = panes.findIndex((pane) => pane.fullWidth)
   const rows: DevGridPaneConfig[][] = []
 
@@ -93,11 +150,11 @@ function createWindowsTerminalCommands(repoRoot: string, panes: DevGridPaneConfi
   const [firstRow, ...remainingRows] = rows
   const firstPane = firstRow[0]
   const commands: string[][] = [
-    ['--window', windowName, '--maximized', ...createPaneArgs(repoRoot, 'new-tab', null, firstPane, silent)],
+    ['--window', windowName, '--maximized', ...createPaneArgs(repoRoot, 'new-tab', null, firstPane, silent, paneProfiles.get(firstPane))],
   ]
 
   if (firstRow[1]) {
-    commands.push(['--window', windowName, ...createPaneArgs(repoRoot, 'split-pane', '--vertical', firstRow[1], silent)])
+    commands.push(['--window', windowName, ...createPaneArgs(repoRoot, 'split-pane', '--vertical', firstRow[1], silent, paneProfiles.get(firstRow[1]))])
   }
 
   let previousRow = firstRow
@@ -107,9 +164,9 @@ function createWindowsTerminalCommands(repoRoot: string, panes: DevGridPaneConfi
     }
 
     const [leftPane, rightPane] = row
-    commands.push(['--window', windowName, ...createPaneArgs(repoRoot, 'split-pane', '--horizontal', leftPane, silent)])
+    commands.push(['--window', windowName, ...createPaneArgs(repoRoot, 'split-pane', '--horizontal', leftPane, silent, paneProfiles.get(leftPane))])
     if (rightPane) {
-      commands.push(['--window', windowName, ...createPaneArgs(repoRoot, 'split-pane', '--vertical', rightPane, silent)])
+      commands.push(['--window', windowName, ...createPaneArgs(repoRoot, 'split-pane', '--vertical', rightPane, silent, paneProfiles.get(rightPane))])
     }
     previousRow = row
   }
@@ -179,7 +236,8 @@ export function runDevGrid(runtime: Runtime, rawArgs: string[]): void {
   }
 
   const windowName = `webtoolkit-dev-grid-${Date.now()}-${process.pid}`
-  const commands = createWindowsTerminalCommands(runtime.cwd, validatedPanes, silent, windowName)
+  const paneProfiles = preparePaneProfiles(runtime.cwd, validatedPanes)
+  const commands = createWindowsTerminalCommands(runtime.cwd, validatedPanes, silent, windowName, paneProfiles)
 
   if (dryRun) {
     process.stdout.write(`${JSON.stringify({ executable: 'wt.exe', commands }, null, 2)}\n`)
