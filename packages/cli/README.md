@@ -417,7 +417,7 @@ Dev and environment engines:
     ]
   },
   "environment": {
-    "requiredNodeMajor": 25,
+    "requiredNodeMajor": 26,
     "corepackHome": ".corepack"
   }
 }
