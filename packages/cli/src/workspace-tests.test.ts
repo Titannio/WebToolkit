@@ -5,7 +5,7 @@ import path from 'node:path'
 import { EventEmitter } from 'node:events'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { formatFailureSummary, formatWorkspaceTestStatusLine, runWorkspaceTestTask, runWorkspaceTests, runWorkspaceCoverage } from './workspace-tests.js'
+import { formatFailureSummary, formatWorkspaceTestStatusLine, progressBlockHasFailure, runWorkspaceTestTask, runWorkspaceTests, runWorkspaceCoverage } from './workspace-tests.js'
 import { mergeConfig } from './config.js'
 
 vi.mock('node:fs', async () => {
@@ -53,6 +53,15 @@ describe('workspace test status formatting', () => {
     expect(formatFailureSummary({ failedFiles: 1, failedTests: 1, failedTestsDetected: true })).toBe('1 falha em 1 arquivo')
     expect(formatFailureSummary({ failedFiles: 2, failedTests: 1, failedTestsDetected: false })).toBe('falhas nao detectadas em 2 arquivos')
     expect(formatFailureSummary({ failedFiles: 3, failedTests: 4, failedTestsDetected: true })).toBe('4 falhas em 3 arquivos')
+  })
+
+  it('marks a progress block as failed when any represented test result failed', () => {
+    const results = Array.from({ length: 100 }, () => true)
+    results[2] = false
+
+    expect(progressBlockHasFailure(1, 60, 100, results)).toBe(true)
+    expect(progressBlockHasFailure(2, 60, 100, results)).toBe(false)
+    expect(progressBlockHasFailure(0, 60, 0, [])).toBe(false)
   })
 })
 

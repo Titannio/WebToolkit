@@ -212,6 +212,18 @@ export function formatWorkspaceTestStatusLine(options: WorkspaceTestStatusLineOp
   return `\x1b[32mOK\x1b[0m (${options.duration}s)`
 }
 
+export function progressBlockHasFailure(index: number, width: number, total: number, results: boolean[]): boolean {
+  const safeTotal = Math.max(total, 1)
+  const start = Math.floor((index * safeTotal) / width)
+  const end = Math.ceil(((index + 1) * safeTotal) / width)
+
+  for (let resultIndex = start; resultIndex < end && resultIndex < results.length; resultIndex += 1) {
+    if (results[resultIndex] === false) return true
+  }
+
+  return false
+}
+
 function drawProgressBar(label: string, name: string, completed: number, total: number, results: boolean[], coverage: number | null = null): void {
   const safeTotal = Math.max(total, 1)
   const safeCompleted = Math.min(Math.max(completed, 0), safeTotal)
@@ -222,7 +234,7 @@ function drawProgressBar(label: string, name: string, completed: number, total: 
 
   for (let index = 0; index < width; index += 1) {
     if (index < filledChars) {
-      const failed = results[Math.floor(index * (safeTotal / width))] === false
+      const failed = progressBlockHasFailure(index, width, safeTotal, results)
       barStr += `${failed ? '\x1b[31m' : '\x1b[32m'}█\x1b[0m`
     } else {
       barStr += '\x1b[90m░\x1b[0m'
@@ -307,7 +319,9 @@ async function runWorkspaceTest(target: WorkspaceTargetConfig, runtime: Runtime)
       const exitCode = code ?? 1
       const summary = parseFailureSummary(outputBuffer, exitCode, hasFailure)
       const failed = exitCode !== 0 || hasFailure
-      if (failed && !results.includes(false)) results.push(false)
+      if (failed && !results.includes(false)) {
+        results[Math.max(0, Math.min(totalFiles, Math.max(results.length, 1)) - 1)] = false
+      }
       drawProgressBar('Testing', target.name, totalFiles, totalFiles, results)
 
       console.info(formatWorkspaceTestStatusLine(failed

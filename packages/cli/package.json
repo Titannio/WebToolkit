@@ -1,6 +1,6 @@
 {
   "name": "@titannio/webtoolkit-cli",
-  "version": "1.2.6",
+  "version": "1.2.7",
   "private": false,
   "description": "Portable CLI tools for TypeScript monorepos and web projects.",
   "keywords": [
@@ -42,6 +42,7 @@
     "npm:release": "npm publish --access public"
   },
   "dependencies": {
+    "dependency-cruiser": "^18.0.0",
     "semver": "^7.8.3",
     "ts-morph": "^28.0.0",
     "typescript": "^6.0.3"

@@ -27,6 +27,7 @@ describe('guard runner', () => {
     printGuardHelp()
 
     expect(logs.some((line) => line.includes('Builtin guards:'))).toBe(true)
+    expect(logs.some((line) => line.includes('dependency-cruiser'))).toBe(true)
     expect(logs.some((line) => line.includes('singleton-deps'))).toBe(true)
   })
 
@@ -40,14 +41,26 @@ describe('guard runner', () => {
     const status = executeBuiltinGuard('any', ['--help'], '/repo')
 
     expect(status).toBe(7)
-        const called = spawnSyncMock.mock.calls[0]
-        expect(called[0]).toBe(process.execPath)
-        const resolvedGuardArg = String(called?.[1]?.[0] ?? '')
-        expect(resolvedGuardArg).toContain('any-guard.js')
-        expect(called?.[1]).toContain('--help')
-        expect(called?.[2]).toMatchObject({ cwd: '/repo', env: expect.objectContaining({ FORCE_COLOR: '1' }) })
-        expect(called?.[2]).toMatchObject({ cwd: '/repo', env: expect.objectContaining({ FORCE_COLOR: '1' }) })
-      })
+    const called = spawnSyncMock.mock.calls[0]
+    expect(called[0]).toBe(process.execPath)
+    const resolvedGuardArg = String(called?.[1]?.[0] ?? '')
+    expect(resolvedGuardArg).toContain('any-guard.js')
+    expect(called?.[1]).toContain('--help')
+    expect(called?.[2]).toMatchObject({ cwd: '/repo', env: expect.objectContaining({ FORCE_COLOR: '1' }) })
+  })
+
+  it('runs the dependency-cruiser builtin guard through the native wrapper', () => {
+    spawnSyncMock.mockReturnValue({ status: 0, error: undefined } as never)
+
+    const status = executeBuiltinGuard('dependency-cruiser', ['apps', '--config', '.webtoolkit-cli/dependency-cruiser.cjs'], '/repo')
+
+    expect(status).toBe(0)
+    const called = spawnSyncMock.mock.calls[0]
+    expect(called[0]).toBe(process.execPath)
+    expect(String(called?.[1]?.[0] ?? '')).toContain('dependency-cruiser-guard.js')
+    expect(called?.[1]).toEqual(expect.arrayContaining(['apps', '--config', '.webtoolkit-cli/dependency-cruiser.cjs']))
+    expect(called?.[2]).toMatchObject({ cwd: '/repo', stdio: 'inherit' })
+  })
 
   it('returns status 1 when guard exits without status and throws when the process errored', () => {
     spawnSyncMock.mockReturnValueOnce({ status: undefined, error: undefined } as never)

@@ -143,6 +143,7 @@ Builtin guards:
 - `assert-no-tests-in-dist`
 - `code-pattern`
 - `dal-service-repository`
+- `dependency-cruiser`
 - `docs-inventory`
 - `internal-link`
 - `mojibake`
@@ -296,8 +297,8 @@ Repo check engine:
       },
       {
         "label": "Architecture Lint",
-        "command": "pnpm",
-        "args": ["exec", "depcruise", "src", "--config", ".dependency-cruiser.cjs"]
+        "builtinGuard": "dependency-cruiser",
+        "args": ["src", "--config", ".dependency-cruiser.cjs"]
       }
     ]
   }
