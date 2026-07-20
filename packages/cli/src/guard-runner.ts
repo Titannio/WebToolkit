@@ -8,7 +8,7 @@ export const builtinGuards: Record<string, string> = {
   'code-pattern': 'code-pattern-guard.js',
   'dal-service-repository': 'dal-service-repository-check.js',
   'dependency-cruiser': 'dependency-cruiser-guard.js',
-  'docs-inventory': 'docs-inventory-guard.js',
+  documentation: 'documentation-guard.js',
   'internal-link': 'internal-link-guard.js',
   mojibake: 'check-mojibake.js',
   'rebuild-preflight': 'rebuild-preflight.js',

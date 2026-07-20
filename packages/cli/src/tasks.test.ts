@@ -527,13 +527,13 @@ describe('task execution', () => {
       tasks: {
         check: {
           steps: [
-            { label: 'guard', builtinGuard: 'docs-inventory', args: ['--strict'] },
+            { label: 'guard', builtinGuard: 'documentation', args: ['--strict'] },
           ],
         },
       },
     }).config)
 
-    expect(consoleInfo).toHaveBeenCalledWith(expect.stringContaining('- guard: webtoolkit guard docs-inventory --strict'))
+    expect(consoleInfo).toHaveBeenCalledWith(expect.stringContaining('- guard: webtoolkit guard documentation --strict'))
     consoleInfo.mockRestore()
   })
 })

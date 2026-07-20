@@ -28,7 +28,9 @@ webtoolkit dev-grid --dry-run
 webtoolkit wait-service --url=http://localhost:3001
 webtoolkit env-bootstrap
 webtoolkit env-doctor
-webtoolkit guard docs-inventory
+webtoolkit config --help documentation
+webtoolkit config --json
+webtoolkit guard documentation
 webtoolkit run:customTask
 ```
 
@@ -77,6 +79,17 @@ Start with the smallest config that describes what is local to your project:
 
 The config file is discovered by walking upward from the current working directory.
 
+The CLI also exposes its complete configuration reference without requiring a config file:
+
+```bash
+webtoolkit config
+webtoolkit config --help documentation
+webtoolkit config --json
+webtoolkit config --json documentation
+```
+
+`--json` emits JSON Schema for tools that need a machine-readable list of supported fields.
+
 ## Config Reference
 
 Top-level fields:
@@ -84,6 +97,7 @@ Top-level fields:
 - `packageManager`: command used for package-manager operations and task steps, usually `pnpm`, `npm`, or `yarn`.
 - `cleaner`: optional cleanup behavior overrides.
 - `tasks`: named recipes used by generic task commands such as `webtoolkit check`, `webtoolkit build`, and `webtoolkit run:<name>`.
+- `documentation`: declarative Markdown, collection, paired-document, and coverage-inventory checks.
 - `repoCheck`: repository quality check steps used by `webtoolkit check`.
 - `workspaceTests`: workspace targets used by `webtoolkit test`, `webtoolkit test-coverage`, and `webtoolkit workspace-test`.
 - `releaseGate`: named critical stages used by `webtoolkit release-gate`.
@@ -94,6 +108,17 @@ Top-level fields:
 - `devWatch`: dev app ports and package filters used by `webtoolkit dev-watch`.
 - `devGrid`: terminal panes used by `webtoolkit dev-grid`.
 - `environment`: Node/Corepack/package-manager policy used by `webtoolkit env-bootstrap` and `webtoolkit env-doctor`.
+
+Documentation fields:
+
+- `files`: required glob patterns selecting Markdown files to inspect.
+- `excludeDirectories`: optional directory names omitted from repository scanning.
+- `checks`: optional `singleH1`, `headingOrder`, `localLinks`, and reachability rules. The first three default to `true`.
+- `requiredFiles`: exact repository-relative files that must exist.
+- `collections`: document globs with optional index, metadata, and paired-document rules.
+- `inventories`: inventory documents and source globs that must be listed as inline-code paths.
+- Paths and globs are repository-relative. Paired-document targets support `{basename}` and `{stem}`.
+- Run `webtoolkit config --help documentation` or `webtoolkit config --json documentation` for the complete nested reference.
 
 Cleaner fields:
 
@@ -144,7 +169,7 @@ Builtin guards:
 - `code-pattern`
 - `dal-service-repository`
 - `dependency-cruiser`
-- `docs-inventory`
+- `documentation`
 - `internal-link`
 - `mojibake`
 - `rebuild-preflight`

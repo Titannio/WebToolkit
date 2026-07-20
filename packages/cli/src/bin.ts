@@ -2,6 +2,7 @@
 import path from 'node:path'
 
 import { loadConfig } from './config.js'
+import { runConfigReference } from './config-reference.js'
 import { runBundleAudit } from './bundle-audit.js'
 import { parseCleanArgs, printCleanHelp, runCleaner } from './cleaner.js'
 import { runDevGrid } from './dev-grid.js'
@@ -37,6 +38,7 @@ function printHelp(taskNames: string[] = []): void {
   console.info('  wait-service                  Wait for a service readiness endpoint.')
   console.info('  env-bootstrap                 Prepare configured Node/Corepack environment.')
   console.info('  env-doctor                    Validate configured Node/Corepack environment.')
+  console.info('  config [--help|--json]        Show .webtoolkit-cli/config.json reference.')
   console.info('  guard <name>                  Run a builtin guard engine.')
   console.info('  run:<task>                    Run any configured task by name.')
   if (taskNames.length > 0) {
@@ -114,6 +116,12 @@ function printEngineHelp(command: string): void {
 
 async function main(): Promise<void> {
   const [command, ...args] = process.argv.slice(2)
+
+  if (command === 'config') {
+    runConfigReference(args)
+    return
+  }
+
   const { config, configPath } = await loadConfig(process.cwd())
   const workspaceRoot = configPath ? path.dirname(path.dirname(configPath)) : process.cwd()
 

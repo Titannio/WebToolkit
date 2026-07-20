@@ -46,6 +46,9 @@ describe('config file discovery', () => {
 describe('config merging', () => {
   it('merges cleaner overrides while preserving defaults', () => {
     const config = mergeConfig({
+      documentation: {
+        files: ['docs/**/*.md'],
+      },
       cleaner: {
         levels: {
           cache: {
@@ -58,6 +61,7 @@ describe('config merging', () => {
     })
 
     expect(config.packageManager).toBe('pnpm')
+    expect(config.documentation?.files).toEqual(['docs/**/*.md'])
     expect(config.cleaner.levels.cache.removableDirNames).toContain('cacheOnly')
     expect(config.cleaner.levels.cache.removableDirNames).not.toContain('.turbo')
     expect(config.cleaner.levels.cache.removableFileNames).toContain('custom-cache.txt')

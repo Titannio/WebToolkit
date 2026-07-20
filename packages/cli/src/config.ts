@@ -41,6 +41,7 @@ export type WebToolkitCliConfig = {
   packageManager: string
   cleaner: CleanerConfig
   tasks: Record<string, TaskConfig>
+  documentation?: DocumentationConfig
   workspaceTests?: WorkspaceTestsConfig
   repoCheck?: RepoCheckConfig
   releaseGate?: ReleaseGateConfig
@@ -51,6 +52,56 @@ export type WebToolkitCliConfig = {
   devWatch?: DevWatchConfig
   devGrid?: DevGridConfig
   environment?: EnvironmentConfig
+}
+
+export type DocumentationMetadataRule = {
+  equals?: string
+  unique?: boolean
+  repositoryPaths?: boolean
+  minItems?: number
+}
+
+export type DocumentationPairedDocumentsConfig = {
+  target: string
+  index?: string
+  table?: {
+    header: string[]
+    fileColumn: string
+    minRows?: number
+  }
+  finalSection?: {
+    heading: string
+    minItems?: number
+  }
+}
+
+export type DocumentationCollectionConfig = {
+  files: string[]
+  exclude?: string[]
+  index?: string
+  metadata?: Record<string, DocumentationMetadataRule>
+  pairedDocuments?: DocumentationPairedDocumentsConfig
+}
+
+export type DocumentationConfig = {
+  files: string[]
+  excludeDirectories?: string[]
+  checks?: {
+    singleH1?: boolean
+    headingOrder?: boolean
+    localLinks?: boolean
+    reachability?: {
+      entrypoints: string[]
+      files: string[]
+    }
+  }
+  requiredFiles?: string[]
+  collections?: DocumentationCollectionConfig[]
+  inventories?: Array<{
+    document: string
+    sources: string[]
+    minMatches?: number
+  }>
 }
 
 export type TaskOutputMode = 'inherit' | 'buffered'
@@ -318,6 +369,7 @@ export function mergeConfig(override: PartialWebToolkitCliConfig = {}): WebToolk
   return {
     packageManager: override.packageManager ?? defaultConfig.packageManager,
     tasks: override.tasks ?? defaultConfig.tasks,
+    documentation: override.documentation,
     workspaceTests: override.workspaceTests,
     repoCheck: override.repoCheck,
     releaseGate: override.releaseGate,

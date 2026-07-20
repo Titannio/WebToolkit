@@ -78,7 +78,7 @@ describe('guard runner', () => {
     })
     spawnSyncMock.mockReturnValue({ status: 0, error: undefined } as never)
 
-    expect(() => runBuiltinGuard('docs-inventory', [], '/repo')).toThrow('exit')
+    expect(() => runBuiltinGuard('documentation', [], '/repo')).toThrow('exit')
     expect(processExit).toHaveBeenCalledWith(0)
   })
 })

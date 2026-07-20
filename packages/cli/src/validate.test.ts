@@ -160,11 +160,11 @@ describe('validate', () => {
     await runValidateEngine(runtimeWithConfig('/repo', {
       packageManager: 'pnpm',
       validate: {
-        steps: [{ label: 'guard', builtinGuard: 'docs-inventory', args: ['--strict'] }],
+        steps: [{ label: 'guard', builtinGuard: 'documentation', args: ['--strict'] }],
       },
     }))
 
-    expect(executeBuiltinGuard).toHaveBeenCalledWith('docs-inventory', ['--strict'], '/repo')
+    expect(executeBuiltinGuard).toHaveBeenCalledWith('documentation', ['--strict'], '/repo')
     expect(vi.mocked(runCommandBuffered)).not.toHaveBeenCalled()
   })
 
