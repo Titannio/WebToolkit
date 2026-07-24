@@ -1,0 +1,17 @@
+export const builtinGuards: Readonly<Record<string, string>> = {
+  any: 'any-guard.js',
+  'assert-no-tests-in-dist': 'assert-no-tests-in-dist.js',
+  'code-pattern': 'code-pattern-guard.js',
+  'dal-service-repository': 'dal-service-repository-check.js',
+  'dependency-cruiser': 'dependency-cruiser-guard.js',
+  documentation: 'documentation-guard.js',
+  'internal-link': 'internal-link-guard.js',
+  mojibake: 'check-mojibake.js',
+  'package-surface': 'package-surface-guard.js',
+  'rebuild-preflight': 'rebuild-preflight.js',
+  'repository-hygiene': 'repository-hygiene-guard.js',
+  schema: 'schema-guard.js',
+  'singleton-deps': 'singleton-deps-guard.js',
+  tsconfig: 'tsconfig-guard.js',
+  'workspace-manifest': 'workspace-manifest-guard.js',
+}
