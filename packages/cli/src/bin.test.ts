@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 const mocks = vi.hoisted(() => ({
   loadConfig: vi.fn(),
   runConfigReference: vi.fn(),
+  runArchitectureMap: vi.fn(),
   parseCleanArgs: vi.fn(() => ({ level: 'cache' })),
   runCleaner: vi.fn(),
   printGuardHelp: vi.fn(),
@@ -32,6 +33,7 @@ vi.mock('./config.js', async (importOriginal) => ({
   loadConfig: mocks.loadConfig,
 }))
 vi.mock('./config-reference.js', () => ({ runConfigReference: mocks.runConfigReference }))
+vi.mock('./architecture-map.js', () => ({ runArchitectureMap: mocks.runArchitectureMap }))
 vi.mock('./bundle-audit.js', () => ({ runBundleAudit: mocks.runBundleAudit }))
 vi.mock('./cleaner.js', () => ({ parseCleanArgs: mocks.parseCleanArgs, runCleaner: mocks.runCleaner }))
 vi.mock('./dev-grid.js', () => ({ runDevGrid: mocks.runDevGrid }))
@@ -140,10 +142,17 @@ describe('CLI command routing', () => {
     expect(runner).toHaveBeenCalled()
   })
 
+  it('runs architecture-map without command-line configuration', async () => {
+    await main(['architecture-map'], '/repo')
+    expect(mocks.runArchitectureMap).toHaveBeenCalledWith({ cwd: '/repo', config: nativeConfig })
+    await expect(main(['architecture-map', '--output', 'map.html'], '/repo')).rejects.toThrow('Usage:')
+  })
+
   it.each([
     'test',
     'check',
     'test-coverage',
+    'architecture-map',
     'release-gate',
     'validate',
     'jsdoc-report',

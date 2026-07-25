@@ -42,6 +42,7 @@ export type WebToolkitCliConfig = {
   packageManager: string
   cleaner: CleanerConfig
   tasks: Record<string, TaskConfig>
+  architectureMap?: ArchitectureMapConfig
   guards?: GuardsConfig
   documentation?: DocumentationConfig
   workspaceTests?: WorkspaceTestsConfig
@@ -54,6 +55,13 @@ export type WebToolkitCliConfig = {
   devWatch?: DevWatchConfig
   devGrid?: DevGridConfig
   environment?: EnvironmentConfig
+}
+
+export type ArchitectureMapConfig = {
+  includePaths: string[]
+  outputDirectory: string
+  dependencyCruiserConfig?: string
+  initialExpandedDepth?: number
 }
 
 export type PathScanGuardConfig = {
@@ -496,6 +504,7 @@ export function mergeConfig(override: PartialWebToolkitCliConfig = {}): WebToolk
   return {
     packageManager: override.packageManager ?? defaultConfig.packageManager,
     tasks: override.tasks ?? defaultConfig.tasks,
+    architectureMap: override.architectureMap,
     guards: override.guards,
     documentation: override.documentation,
     workspaceTests: override.workspaceTests,

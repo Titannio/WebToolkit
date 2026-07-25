@@ -14,6 +14,7 @@ npm install -D @titannio/webtoolkit-cli
 webtoolkit clean --level cache --dry-run
 webtoolkit clean --level deep
 webtoolkit clean --level nuclear --no-store-prune --reinstall=never
+webtoolkit architecture-map
 webtoolkit check
 webtoolkit build
 webtoolkit test --filter backend
@@ -111,6 +112,7 @@ Top-level fields:
 - `packageManager`: command used for package-manager operations and task steps, usually `pnpm`, `npm`, or `yarn`.
 - `cleaner`: optional cleanup behavior overrides.
 - `tasks`: named recipes used by generic task commands such as `webtoolkit check`, `webtoolkit build`, and `webtoolkit run:<name>`.
+- `architectureMap`: source paths and output directory used by `webtoolkit architecture-map`.
 - `guards`: consumer-owned paths, targets, rules, and allowlists for configurable builtin guards.
 - `documentation`: declarative Markdown, collection, paired-document, and coverage-inventory checks.
 - `repoCheck`: repository quality check steps used by `webtoolkit check`.
@@ -527,6 +529,21 @@ Release gate engine:
   }
 }
 ```
+
+Architecture map engine:
+
+```json
+{
+  "architectureMap": {
+    "includePaths": ["apps", "packages", "scripts"],
+    "outputDirectory": "docs/generated",
+    "dependencyCruiserConfig": ".webtoolkit-cli/dependency-cruiser.cjs",
+    "initialExpandedDepth": 1
+  }
+}
+```
+
+`outputDirectory` may be absolute or relative to the project. The command includes production code, tests, and scripts under `includePaths`, excludes dependencies and generated artifacts, and writes a self-contained `YYYY-MM-DD_architecture-map.html`. The HTML uses a graph-first interface with a collapsible hierarchy, aggregated import edges, search, pan/zoom, critical-path highlighting, and node details. Running it again on the same day replaces that day's map. `initialExpandedDepth` defaults to `1`: `0` opens the repository, `1` also opens workspace roots, `2` also opens packages, and higher values open successive package descendants. `dependencyCruiserConfig` is optional; without it, dependency-cruiser runs with `--no-config`.
 
 JSDoc, bundle audit, and upgrade engines:
 

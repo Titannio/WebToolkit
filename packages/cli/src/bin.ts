@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url'
 
 import { loadConfig } from './config.js'
 import { runConfigReference } from './config-reference.js'
+import { runArchitectureMap } from './architecture-map.js'
 import { runBundleAudit } from './bundle-audit.js'
 import { parseCleanArgs, runCleaner } from './cleaner.js'
 import { runDevGrid } from './dev-grid.js'
@@ -24,6 +25,7 @@ function printHelp(taskNames: string[] = []): void {
   console.info('')
   console.info('Commands:')
   console.info('  clean                         Remove cache, build, and temporary artifacts.')
+  console.info('  architecture-map              Generate a navigable static architecture map.')
   console.info('  check                         Run the configured check task.')
   console.info('  build                         Run the configured build task.')
   console.info('  test                          Run the configured test task.')
@@ -88,6 +90,10 @@ function printEngineHelp(command: string): void {
       'Usage: webtoolkit performance-bundle-audit [--top N] [--root path]',
       'Audits configured frontend build assets.',
     ],
+    'architecture-map': [
+      'Usage: webtoolkit architecture-map',
+      'Generates a dated static HTML architecture map from configured source paths.',
+    ],
     'dev-watch': [
       'Usage: webtoolkit dev-watch [--apps=a,b] [--check-only] [--include-backend] [--silent]',
       'Runs configured frontend dev watchers and port preflight.',
@@ -134,6 +140,16 @@ export async function main(rawArgs = process.argv.slice(2), cwd = process.cwd())
   if (command === 'clean') {
     const options = parseCleanArgs(args)
     await runCleaner(options, { cwd: workspaceRoot, config })
+    return
+  }
+
+  if (command === 'architecture-map') {
+    if (hasHelp(args)) {
+      printEngineHelp(command)
+      return
+    }
+    if (args.length > 0) throw new Error('Usage: webtoolkit architecture-map')
+    runArchitectureMap({ cwd: workspaceRoot, config })
     return
   }
 

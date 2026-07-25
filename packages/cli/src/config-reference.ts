@@ -55,6 +55,7 @@ export const configSchema: JsonSchema = {
       additionalProperties: { $ref: '#/$defs/task' },
       examples: [{ build: { steps: [{ label: 'TypeScript', command: 'pnpm', args: ['exec', 'tsc', '--noEmit'] }] } }],
     },
+    architectureMap: { $ref: '#/$defs/architectureMap' },
     guards: { $ref: '#/$defs/guards' },
     documentation: { $ref: '#/$defs/documentation' },
     workspaceTests: { $ref: '#/$defs/workspaceTests' },
@@ -69,6 +70,34 @@ export const configSchema: JsonSchema = {
     environment: { $ref: '#/$defs/environment' },
   },
   $defs: {
+    architectureMap: {
+      type: 'object',
+      description: 'Static navigable architecture map generation.',
+      required: ['includePaths', 'outputDirectory'],
+      additionalProperties: false,
+      properties: {
+        includePaths: projectPaths('Project-relative source directories included in the map.'),
+        outputDirectory: {
+          type: 'string',
+          minLength: 1,
+          format: 'output-directory',
+          description: 'Absolute or project-relative directory that receives the dated HTML file.',
+        },
+        dependencyCruiserConfig: projectPath('Optional project-relative dependency-cruiser configuration file.'),
+        initialExpandedDepth: {
+          type: 'integer',
+          minimum: 0,
+          default: 1,
+          description: 'Initially expanded graph depth: 0 repository, 1 workspace roots, 2 packages, then package descendants.',
+        },
+      },
+      examples: [{
+        includePaths: ['apps', 'packages', 'scripts'],
+        outputDirectory: 'docs/generated',
+        dependencyCruiserConfig: '.webtoolkit-cli/dependency-cruiser.cjs',
+        initialExpandedDepth: 1,
+      }],
+    },
     taskStep: {
       type: 'object',
       required: ['label'],
@@ -706,6 +735,10 @@ function isSafeProjectPath(value: string): boolean {
   )
 }
 
+function isOutputDirectory(value: string): boolean {
+  return path.posix.isAbsolute(value) || path.win32.isAbsolute(value) || isSafeProjectPath(value)
+}
+
 function isValidRegex(value: string): boolean {
   try {
     new RegExp(value)
@@ -746,6 +779,9 @@ function configErrorMessage(error: ErrorObject): string {
   if (error.keyword === 'format' && error.params.format === 'project-path') {
     return 'must be a safe project-relative path'
   }
+  if (error.keyword === 'format' && error.params.format === 'output-directory') {
+    return 'must be an absolute path or a safe project-relative path'
+  }
   if (error.keyword === 'format' && error.params.format === 'regex') {
     return 'must be a valid regular expression'
   }
@@ -761,6 +797,7 @@ const schemaValidator = new Ajv2020({
   strict: true,
 })
 schemaValidator.addFormat('project-path', { type: 'string', validate: isSafeProjectPath })
+schemaValidator.addFormat('output-directory', { type: 'string', validate: isOutputDirectory })
 schemaValidator.addFormat('regex', { type: 'string', validate: isValidRegex })
 const validateSchema = schemaValidator.compile(configSchema)
 

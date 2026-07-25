@@ -1,3 +1,4 @@
+import path from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 
 import {
@@ -15,6 +16,7 @@ describe('config reference', () => {
       'packageManager',
       'cleaner',
       'tasks',
+      'architectureMap',
       'guards',
       'documentation',
       'workspaceTests',
@@ -134,6 +136,12 @@ describe('config reference', () => {
           required: true,
         }],
       },
+      architectureMap: {
+        includePaths: ['apps', 'packages', 'scripts'],
+        outputDirectory: 'docs/generated',
+        dependencyCruiserConfig: '.webtoolkit-cli/dependency-cruiser.cjs',
+        initialExpandedDepth: 1,
+      },
     })).not.toThrow()
   })
 
@@ -245,6 +253,26 @@ describe('config reference', () => {
         },
       },
     })).toThrow('guards.repositoryHygiene.forbiddenPathPatterns[0]')
+
+    expect(() => validateConfig({
+      architectureMap: {
+        includePaths: ['apps'],
+        outputDirectory: '../outside',
+      },
+    })).toThrow('architectureMap.outputDirectory')
+    expect(() => validateConfig({
+      architectureMap: {
+        includePaths: ['apps'],
+        outputDirectory: path.resolve('architecture-map-output'),
+      },
+    })).not.toThrow()
+    expect(() => validateConfig({
+      architectureMap: {
+        includePaths: ['apps'],
+        outputDirectory: 'generated',
+        initialExpandedDepth: -1,
+      },
+    })).toThrow('architectureMap.initialExpandedDepth')
   })
 
   it('aggregates path-specific errors in one failure', () => {
