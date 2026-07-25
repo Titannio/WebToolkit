@@ -25,7 +25,7 @@ function hasWindowsTerminal(): boolean {
 }
 
 function createPaneCommand(command: string): string[] {
-  return [getPowerShellExecutable(), '-NoLogo', '-NoExit', '-Command', `$env:FORCE_COLOR = '1'; ${command}`]
+  return [getPowerShellExecutable(), '-NoLogo', '-NoExit', '-Command', `$env:FORCE_COLOR = '1'\n${command}`]
 }
 
 function createPaneArgs(

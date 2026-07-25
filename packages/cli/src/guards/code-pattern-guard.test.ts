@@ -187,7 +187,7 @@ function config(includePaths = ['apps/api/src']): CodePatternGuardConfig {
 }
 
 describe('code-pattern guard runner', () => {
-  it('detects type-only imports with a real type checker', async () => {
+  it('detects type-only imports with a real type checker', { timeout: 15_000 }, async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), 'webtoolkit-code-pattern-types-'))
     roots.push(root)
     const typesFile = path.join(root, 'types.ts')

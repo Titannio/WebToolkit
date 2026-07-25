@@ -113,7 +113,7 @@ describe('dev-grid runtime', () => {
       '--title',
       'Frontend 1',
       '-Command',
-      "$env:FORCE_COLOR = '1'; front-1",
+      "$env:FORCE_COLOR = '1'\nfront-1",
     ]))
     expect(commands[1]).toEqual(expect.arrayContaining(['split-pane', '--horizontal', '--size', '0.5', '--title', 'Backend']))
     expect(commands[2]).toEqual(expect.arrayContaining(['move-focus', 'first']))
@@ -238,8 +238,8 @@ describe('dev-grid runtime', () => {
     }), ['--silent'])
 
     const commands = spawnCalls.filter((entry) => entry.command === 'wt.exe').flatMap((entry) => entry.args)
-    expect(commands).toContain("$env:FORCE_COLOR = '1'; silent-a")
-    expect(commands).toContain("$env:FORCE_COLOR = '1'; normal-b")
+    expect(commands).toContain("$env:FORCE_COLOR = '1'\nsilent-a")
+    expect(commands).toContain("$env:FORCE_COLOR = '1'\nnormal-b")
   })
 
   it('uses Windows PowerShell when pwsh is unavailable', () => {
