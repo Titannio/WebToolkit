@@ -2,9 +2,9 @@
 /**
  * DAL + Service + Repository Compliance Report
  *
- * Analisa a camada backend e identifica violacoes de fronteira arquitetural
- * entre Controllers, Services, Repositories, Routes, Middlewares e o agregador
- * central de DAL.
+ * Analyzes backend layers and identifies architectural boundary violations
+ * between controllers, services, repositories, routes, middleware, and the
+ * central DAL aggregator.
  */
 
 import fs from 'node:fs'

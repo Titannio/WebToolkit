@@ -80,13 +80,13 @@ describe('workspace test status formatting', () => {
       failed: true,
       duration: '123.4',
       summary: { failedFiles: 7, failedTests: 9, failedTestsDetected: true },
-    })).toContain('\x1b[31mERRO\x1b[0m - 9 falhas em 7 arquivos (123.4s)')
+    })).toContain('\x1b[31mERROR\x1b[0m - 9 failures across 7 files (123.4s)')
   })
 
   it('formats failure summaries', () => {
-    expect(formatFailureSummary({ failedFiles: 1, failedTests: 1, failedTestsDetected: true })).toBe('1 falha em 1 arquivo')
-    expect(formatFailureSummary({ failedFiles: 2, failedTests: 1, failedTestsDetected: false })).toBe('falhas nao detectadas em 2 arquivos')
-    expect(formatFailureSummary({ failedFiles: 3, failedTests: 4, failedTestsDetected: true })).toBe('4 falhas em 3 arquivos')
+    expect(formatFailureSummary({ failedFiles: 1, failedTests: 1, failedTestsDetected: true })).toBe('1 failure across 1 file')
+    expect(formatFailureSummary({ failedFiles: 2, failedTests: 1, failedTestsDetected: false })).toBe('failures not detected across 2 files')
+    expect(formatFailureSummary({ failedFiles: 3, failedTests: 4, failedTestsDetected: true })).toBe('4 failures across 3 files')
   })
 
   it('marks a progress block as failed when any represented test result failed', () => {
@@ -518,7 +518,7 @@ describe('workspace multi-file execution', () => {
 
     await runWorkspaceTests(runtime, ['packages/app/a.test.ts', 'packages/app/b.test.ts'])
 
-    expect(configMock).toHaveBeenCalledWith(expect.stringContaining('Executando testes em'))
+    expect(configMock).toHaveBeenCalledWith(expect.stringContaining('Running tests in'))
     expect(spawnSyncMock).toHaveBeenCalledWith('pnpm', expect.arrayContaining(['--filter', '@scope/app', 'run', 'test']), expect.anything())
     expect(commandMock).toHaveBeenCalledWith('pnpm', ['--filter', '@scope/app', 'run', 'test', 'a.test.ts', 'b.test.ts'])
 
@@ -535,7 +535,7 @@ describe('workspace multi-file execution', () => {
       workspaceTests: {
         workspaces: [{ name: 'app', package: 'app', path: 'app' }],
       },
-    }), ['outside.test.ts'])).rejects.toThrow('nao pertence')
+    }), ['outside.test.ts'])).rejects.toThrow('does not belong')
     await rm(root, { recursive: true, force: true })
   })
 
@@ -680,7 +680,7 @@ describe('workspace coverage command', () => {
       },
     }), [])).resolves.toBeUndefined()
 
-    expect(console.info).toHaveBeenCalledWith(expect.stringContaining('Relatórios de cobertura'))
+    expect(console.info).toHaveBeenCalledWith(expect.stringContaining('Coverage reports'))
     await rm(root, { recursive: true, force: true })
   })
 
@@ -737,7 +737,7 @@ describe('workspace coverage command', () => {
 
       await expect(runWorkspaceCoverage(runtime, ['--something'])).rejects.toThrow('Coverage failed for app.')
       expect(commandMock).toHaveBeenCalled()
-      expect(runSpy).toHaveBeenCalledWith(expect.stringContaining('\x1b[31m FALHA'))
+      expect(runSpy).toHaveBeenCalledWith(expect.stringContaining('\x1b[31m FAIL'))
     } finally {
       cwdSpy.mockRestore()
       runSpy.mockRestore()

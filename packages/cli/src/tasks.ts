@@ -52,16 +52,16 @@ function resolveCommand(step: TaskStepConfig, args: string[]): { command: string
   }
 }
 
-function colorizeResult(status: 'OK' | 'FALHA' | 'SKIP'): string {
+function colorizeResult(status: 'OK' | 'FAIL' | 'SKIP'): string {
   if (status === 'OK') return `\x1b[32m${status}\x1b[0m`
-  if (status === 'FALHA') return `\x1b[31m${status}\x1b[0m`
+  if (status === 'FAIL') return `\x1b[31m${status}\x1b[0m`
   return `\x1b[90m${status}\x1b[0m`
 }
 
 export function formatTaskStatusLine(options: {
   action: string
   label: string
-  status?: 'OK' | 'FALHA' | 'SKIP'
+  status?: 'OK' | 'FAIL' | 'SKIP'
   durationMs?: number
 }): string {
   const duration = options.durationMs === undefined ? '' : ` (${formatDuration(options.durationMs)})`
@@ -212,11 +212,11 @@ export async function runTask(taskName: string, runtime: Runtime, passthroughArg
     const failedLine = formatTaskStatusLine({
       action: getStepAction(step),
       label: step.label,
-      status: 'FALHA',
+      status: 'FAIL',
       durationMs,
     })
     if (stepOutputMode === 'buffered') {
-      console.info(` ${colorizeResult('FALHA')} (${formatDuration(durationMs)})`)
+      console.info(` ${colorizeResult('FAIL')} (${formatDuration(durationMs)})`)
     } else {
       console.info(failedLine)
     }

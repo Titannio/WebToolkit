@@ -43,6 +43,8 @@ This lets each consumer import only what it needs from the correct subpath, with
 
 Suggestions are very welcome.
 
+All repository-authored content must be written in English, including documentation, package descriptions, source comments, CLI or UI messages, examples, and tests. Portuguese prose, prompts, aliases, fallback input tokens, and replaceable fixtures are not allowed. Non-English text is allowed only when required by a locale-specific public contract or by a fixture for Unicode, localization, transliteration, or encoding behavior.
+
 To keep the package coherent, new proposals should follow one of these directions:
 
 - **Agnostic**: reusable utilities with no country/local-rule dependency.

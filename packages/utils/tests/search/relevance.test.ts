@@ -3,19 +3,19 @@ import { normalizeSearchText, sortBySearchRelevance } from '@src/search/index.js
 
 describe('search/relevance', () => {
   it('reuses the shared text normalization', () => {
-    expect(normalizeSearchText('  CafÉ ')).toBe('cafe')
+    expect(normalizeSearchText('  RenÉe ')).toBe('renee')
   })
 
   it('prioritizes exact matches over prefix matches', () => {
-    const items = ['Cafeteria', 'Café', 'Cafeine']
+    const items = ['Renees', 'Renée', 'Renee-Marie']
     const ordered = sortBySearchRelevance({
       items,
-      query: 'Cafe',
+      query: 'Renee',
       getSearchTexts: (item) => [item],
       getTieBreakerText: (item) => item,
     })
 
-    expect(ordered[0]).toBe('Café')
+    expect(ordered[0]).toBe('Renée')
   })
 
   it('returns input order when query is empty', () => {
@@ -107,12 +107,12 @@ describe('search/relevance', () => {
 
   it('matches multi-token queries in different words', () => {
     const ordered = sortBySearchRelevance({
-      items: ['John Mendes Travis', 'John Silva'],
+      items: ['John Michael Travis', 'John Smith'],
       query: 'john trav',
       getSearchTexts: (item) => [item],
     })
 
-    expect(ordered).toEqual(['John Mendes Travis'])
+    expect(ordered).toEqual(['John Michael Travis'])
   })
 
   it('matches insurance by token prefixes with accent-insensitive query', () => {

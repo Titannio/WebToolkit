@@ -37,12 +37,12 @@ describe('repository hygiene guard', () => {
       'z\\dist\\bundle.js',
       'fixtures\\private.key',
       'config/.env.example',
-      'área/private.pem',
+      'résumé/private.pem',
       'config/.env.local',
     ], config)).toEqual([
       { filePath: 'config/.env.local', pattern: '(^|/)\\.env($|\\.)' },
+      { filePath: 'résumé/private.pem', pattern: '\\.(pem|key|p12)$' },
       { filePath: 'z/dist/bundle.js', pattern: '(^|/)(dist|coverage|node_modules)/' },
-      { filePath: 'área/private.pem', pattern: '\\.(pem|key|p12)$' },
     ])
   })
 
@@ -78,11 +78,11 @@ describe('repository hygiene guard', () => {
   it('reads NUL-delimited Git paths including spaces and Unicode', async () => {
     const directory = await tempRoot()
     spawnSync('git', ['init', '--quiet'], { cwd: directory, shell: false })
-    await mkdir(path.join(directory, 'área'), { recursive: true })
-    await writeFile(path.join(directory, 'área', 'with space.txt'), 'ok', 'utf8')
+    await mkdir(path.join(directory, 'résumé'), { recursive: true })
+    await writeFile(path.join(directory, 'résumé', 'with space.txt'), 'ok', 'utf8')
     spawnSync('git', ['add', '.'], { cwd: directory, shell: false })
 
-    expect(readTrackedFiles(directory)).toEqual(['área/with space.txt'])
+    expect(readTrackedFiles(directory)).toEqual(['résumé/with space.txt'])
   })
 
   it('fails outside a Git worktree and for an empty tracked inventory', async () => {

@@ -8,7 +8,7 @@ import {
 
 describe('search/text', () => {
   it('normalizes accents, casing and extra spaces', () => {
-    expect(normalizeSearchText('  San   JOSÉ  ')).toBe('san jose')
+    expect(normalizeSearchText('  François   DUPONT  ')).toBe('francois dupont')
   })
 
   it('returns empty string for nullish input', () => {
@@ -29,9 +29,9 @@ describe('search/text', () => {
   })
 
   it('builds an accent-insensitive regex', () => {
-    const regex = buildDiacriticInsensitiveRegex('caf')
-    expect(regex.test('Café')).toBe(true)
-    expect(regex.test('caf')).toBe(true)
+    const regex = buildDiacriticInsensitiveRegex('rene')
+    expect(regex.test('Renée')).toBe(true)
+    expect(regex.test('rene')).toBe(true)
     expect(regex.test('sol')).toBe(false)
   })
 
@@ -41,7 +41,7 @@ describe('search/text', () => {
   })
 
   it('supports spaces as flexible whitespace in generated patterns', () => {
-    const regex = buildDiacriticInsensitiveRegex('san jose')
-    expect(regex.test('San     José')).toBe(true)
+    const regex = buildDiacriticInsensitiveRegex('francois dupont')
+    expect(regex.test('François     Dupont')).toBe(true)
   })
 })

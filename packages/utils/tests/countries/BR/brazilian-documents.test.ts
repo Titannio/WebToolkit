@@ -95,12 +95,12 @@ describe('Brazilian Documents Utils', () => {
       expect(formatPhone('11987654321', true)).toBe('(11) 98765-4321')
     })
 
-    it('should not normalize leading zero from three-digit DDD', () => {
+    it('should not normalize a leading zero from a three-digit area code', () => {
       expect(formatPhone('021987654321')).toBe('021987654321')
       expect(formatPhone('04333334444', false)).toBe('04333334444')
     })
 
-    it('should not normalize Brazil DDI prefixes', () => {
+    it('should not normalize Brazilian country calling code prefixes', () => {
       expect(formatPhone('+55 (21) 98765-4321')).toBe('5521987654321')
       expect(formatPhone('55 043 3333-4444', false)).toBe('5504333334444')
       expect(formatPhone('05521987654321')).toBe('05521987654321')
@@ -137,12 +137,12 @@ describe('Brazilian Documents Utils', () => {
   })
 
   describe('normalizeBrazilPhoneDigits', () => {
-    it('should only extract digits without inferring DDI or DDD trunk prefix', () => {
+    it('should only extract digits without inferring country or area code prefixes', () => {
       expect(normalizeBrazilPhoneDigits('+55 (021) 98765-4321')).toBe('55021987654321')
       expect(normalizeBrazilPhoneDigits('05504333334444')).toBe('05504333334444')
     })
 
-    it('should preserve area code 55 when there is no DDI-length prefix', () => {
+    it('should preserve area code 55 when there is no country-code-length prefix', () => {
       expect(normalizeBrazilPhoneDigits('(55) 99999-9999')).toBe('55999999999')
     })
   })

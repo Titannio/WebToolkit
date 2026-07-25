@@ -333,7 +333,7 @@ async function shouldReinstallDependencies(options: CleanerOptions): Promise<boo
 
   try {
     const answer = (await rl.question('Reinstall all dependencies now with package manager install --force? [y/N] ')).trim().toLowerCase()
-    return answer === 'y' || answer === 'yes' || answer === 's' || answer === 'sim'
+    return answer === 'y' || answer === 'yes'
   } finally {
     rl.close()
   }

@@ -353,7 +353,7 @@ describe('code-pattern guard runner', () => {
     }
     const log = vi.spyOn(console, 'log').mockImplementation(() => undefined)
     expect(await runCodePatternGuard({ rootDir: root, config: modelConfig })).toBe(1)
-    expect(log.mock.calls.flat().join('\n')).toContain('Prefira `import type`')
+    expect(log.mock.calls.flat().join('\n')).toContain('Prefer `import type`')
 
     await writeFile(
       path.join(root, 'apps', 'backend', 'src', 'mappers', 'user.ts'),

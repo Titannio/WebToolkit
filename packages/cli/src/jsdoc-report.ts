@@ -470,8 +470,8 @@ async function shouldWriteMarkdown(promptForReport: boolean, rawArgs: string[]):
 
   const rl = createInterface({ input, output })
   try {
-    const answer = await rl.question(`${colorize('Generate full Markdown report? (s/N): ', colors.cyan)}`)
-    return ['s', 'sim', 'y', 'yes'].includes(answer.trim().toLowerCase())
+    const answer = await rl.question(`${colorize('Generate full Markdown report? (y/N): ', colors.cyan)}`)
+    return ['y', 'yes'].includes(answer.trim().toLowerCase())
   } finally {
     rl.close()
   }

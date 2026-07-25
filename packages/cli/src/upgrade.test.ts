@@ -112,13 +112,13 @@ describe('upgrade prompts', () => {
     expect(formatYesNoPrompt('🔄', 'Protected singleton upgrades?', false)).toBe('🔄 Protected singleton upgrades? [y/N] ')
   })
 
-  it('parses English and Portuguese yes/no answers with a default', () => {
+  it('parses English yes/no answers with a default', () => {
     expect(parseYesNo('', true)).toBe(true)
     expect(parseYesNo('', false)).toBe(false)
     expect(parseYesNo('y', false)).toBe(true)
-    expect(parseYesNo('sim', false)).toBe(true)
+    expect(parseYesNo('yes', false)).toBe(true)
     expect(parseYesNo('n', true)).toBe(false)
-    expect(parseYesNo('não', true)).toBe(false)
+    expect(parseYesNo('no', true)).toBe(false)
     expect(parseYesNo('maybe', true)).toBeNull()
   })
 

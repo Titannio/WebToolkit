@@ -31,8 +31,8 @@ async function runStepWithStatus(step: TaskStepConfig, runtime: Runtime): Promis
     return
   }
 
-  console.info(`\x1b[31mFALHA\x1b[0m (${duration}s)`)
-  console.info(`\n\x1b[31mDetalhes da falha em\x1b[0m \x1b[1m${step.label}\x1b[0m:`)
+  console.info(`\x1b[31mFAIL\x1b[0m (${duration}s)`)
+  console.info(`\n\x1b[31mFailure details for\x1b[0m \x1b[1m${step.label}\x1b[0m:`)
   console.info('\x1b[90m' + '-'.repeat(process.stdout.columns || 50) + '\x1b[0m')
   const commandText = step.builtinGuard
     ? formatCommand('webtoolkit', ['guard', step.builtinGuard, ...(step.args ?? [])])
@@ -48,17 +48,17 @@ export async function runValidateEngine(runtime: Runtime): Promise<void> {
     throw new Error('validate.steps is not configured.')
   }
 
-  console.info('\nIniciando validação do monorepo...\n')
+  console.info('\nStarting monorepo validation...\n')
   for (const step of validate.steps) {
     await runStepWithStatus(step, runtime)
   }
 
   if (validate.postSteps?.length) {
-    console.info('\nVerificando pós-validação...\n')
+    console.info('\nRunning post-validation checks...\n')
     for (const step of validate.postSteps) {
       await runStepWithStatus(step, runtime)
     }
   }
 
-  console.info('\n\x1b[32m✔ Validação concluida!\x1b[0m\n')
+  console.info('\n\x1b[32m✔ Validation completed!\x1b[0m\n')
 }

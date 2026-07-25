@@ -88,7 +88,7 @@ function collectOverrideIssues(overrides: Record<string, string>): ManifestIssue
         : [
             {
               filePath: 'pnpm-workspace.yaml',
-              message: `overrides["${packageName}"] deve ser um semver/range valido; encontrado "${overrideRange}"`,
+              message: `overrides["${packageName}"] must be a valid semver range; found "${overrideRange}"`,
             },
           ],
     )
@@ -129,7 +129,7 @@ function collectManifestCompatibilityIssues(
       if (!isValidSemverRange(declaredVersion) || !acceptsResolvedVersion(declaredVersion, resolvedVersion)) {
         issues.push({
           filePath: relativePath,
-          message: `"${packageName}" em "${field}" deve aceitar a versao singleton resolvida "${resolvedVersion}" (override: "${overrideRange}"); encontrado "${declaredVersion}"`,
+          message: `"${packageName}" in "${field}" must accept the resolved singleton version "${resolvedVersion}" (override: "${overrideRange}"); found "${declaredVersion}"`,
         })
       }
     }
@@ -167,7 +167,7 @@ export function validateSingletonDependencyPolicy(
     if (resolvedVersions.length > 1) {
       issues.push({
         filePath: 'pnpm-lock.yaml',
-        message: `"${packageName}" aparece com multiplas versoes no lockfile: ${resolvedVersions.join(', ')}`,
+        message: `"${packageName}" appears with multiple versions in the lockfile: ${resolvedVersions.join(', ')}`,
       })
       continue
     }
@@ -179,7 +179,7 @@ export function validateSingletonDependencyPolicy(
     ) {
       issues.push({
         filePath: 'pnpm-lock.yaml',
-        message: `"${packageName}" resolve para "${resolvedVersions[0]}" no lockfile, mas pnpm-workspace.yaml overrides exige compatibilidade com "${overrideRange}"`,
+        message: `"${packageName}" resolves to "${resolvedVersions[0]}" in the lockfile, but pnpm-workspace.yaml overrides require compatibility with "${overrideRange}"`,
       })
     }
   }
@@ -229,7 +229,7 @@ export function runSingletonDepsGuard(rootDir = process.cwd()): number {
   if (!fs.existsSync(lockfilePath)) {
     issues.push({
       filePath: 'pnpm-lock.yaml',
-      message: 'pnpm-lock.yaml não encontrado',
+      message: 'pnpm-lock.yaml not found',
     })
   } else {
     const lockfileContent = fs.readFileSync(lockfilePath, 'utf8')
@@ -239,7 +239,7 @@ export function runSingletonDepsGuard(rootDir = process.cwd()): number {
   if (issues.length > 0) {
     console.info(`${colors.bright}${colors.red}⚠️  SINGLETON DEPENDENCY POLICY VIOLATION${colors.reset}\n`)
     printIssues(issues)
-    console.info(`\n${colors.red}Ajuste os manifests/lockfile para manter dependências singleton alinhadas.${colors.reset}`)
+    console.info(`\n${colors.red}Update manifests and the lockfile to keep singleton dependencies aligned.${colors.reset}`)
     return 1
   }
 

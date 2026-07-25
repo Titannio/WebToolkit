@@ -7,7 +7,7 @@ describe('frameworks/mantine/zod', () => {
     const schema = z.object({ name: z.string() })
     const wrapped = wrapZodSchema(schema)
 
-    expect(wrapped.safeParse({ name: 'Ana' })).toEqual(schema.safeParse({ name: 'Ana' }))
+    expect(wrapped.safeParse({ name: 'Alice' })).toEqual(schema.safeParse({ name: 'Alice' }))
   })
 
   it('adds an errors alias for failed parses', () => {

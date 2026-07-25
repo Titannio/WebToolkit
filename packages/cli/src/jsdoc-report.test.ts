@@ -251,7 +251,7 @@ describe('JSDoc report', () => {
 
   it('honors prompt yes/no answers and non-interactive output', async () => {
     const root = createRoot()
-    readlineMocks.question.mockResolvedValue(' Sim ')
+    readlineMocks.question.mockResolvedValue(' Yes ')
     Object.defineProperty(input, 'isTTY', { configurable: true, value: true })
     Object.defineProperty(output, 'isTTY', { configurable: true, value: true })
     vi.spyOn(console, 'info').mockImplementation(() => undefined)

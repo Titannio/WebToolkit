@@ -509,7 +509,7 @@ export const RULES: PatternRule[] = [
                 absoluteFilePath,
                 parameter.type,
                 rule,
-                'Extraia o shape para um tipo nomeado local ou compartilhado em vez de manter um object type inline na assinatura.',
+                'Extract the shape into a local or shared named type instead of keeping an inline object type in the signature.',
                 parameter.getText(sourceFile),
               ),
             )
@@ -543,7 +543,7 @@ export const RULES: PatternRule[] = [
               absoluteFilePath,
               node,
               rule,
-              `Use de \`mongoose.${action}()\` fora de scripts operacionais ou bootstrap de teste precisa de revisao arquitetural explicita.`,
+              `Using \`mongoose.${action}()\` outside operational scripts or test bootstrap requires explicit architectural review.`,
             ),
           )
         }
@@ -590,7 +590,7 @@ export const RULES: PatternRule[] = [
                 absoluteFilePath,
                 statement,
                 rule,
-                'Neste mapper, o import do model parece ser usado apenas para tipagem. Prefira `import type` para evitar acoplamento de runtime desnecessario.',
+                'This mapper appears to use the model import only for typing. Prefer `import type` to avoid unnecessary runtime coupling.',
                 undefined,
                 'undesirable',
               ),
@@ -606,7 +606,7 @@ export const RULES: PatternRule[] = [
             absoluteFilePath,
             statement,
             rule,
-            'Nao importe models do backend diretamente nesta camada. Passe pelo DAL ou mova a necessidade para uma zona explicitamente autorizada.',
+            'Do not import backend models directly in this layer. Use the DAL or move the dependency to an explicitly authorized zone.',
           ),
         )
       }
@@ -633,7 +633,7 @@ export const RULES: PatternRule[] = [
               absoluteFilePath,
               node,
               rule,
-              'Restrinja `mongoose.model(...)` a models, testes ou excecoes operacionais explicitamente autorizadas.',
+              'Restrict `mongoose.model(...)` to models, tests, or explicitly authorized operational exceptions.',
             ),
           )
         }
@@ -672,7 +672,7 @@ export const RULES: PatternRule[] = [
                 absoluteFilePath,
                 node,
                 rule,
-                'Bulk destructive cleanup com `deleteMany({})` so deve existir em testes ou manutenção explicitamente autorizada.',
+                'Bulk destructive cleanup with `deleteMany({})` must exist only in tests or explicitly authorized maintenance flows.',
               ),
             )
           }
@@ -683,7 +683,7 @@ export const RULES: PatternRule[] = [
               absoluteFilePath,
               node,
               rule,
-              `Operação destrutiva \`${methodName}()\` so deve existir em testes ou manutenção explicitamente autorizada.`,
+              `Destructive operation \`${methodName}()\` must exist only in tests or explicitly authorized maintenance flows.`,
             ),
           )
         }
@@ -714,7 +714,7 @@ export const RULES: PatternRule[] = [
               absoluteFilePath,
               node,
               rule,
-              'Novo uso de `Schema.Types.Mixed` exige revisao arquitetural e allowlist explicita.',
+              'New `Schema.Types.Mixed` usage requires architectural review and an explicit allowlist entry.',
             ),
           )
         }
@@ -749,7 +749,7 @@ export const RULES: PatternRule[] = [
                   absoluteFilePath,
                   node,
                   rule,
-                  `Tipo de \`req.${target}\` deve vir de \`handleAsync<TRequest>\` usando RequestFromSchemas/ValidatedRequest, sem cast manual no controller.`,
+                  `The \`req.${target}\` type must come from \`handleAsync<TRequest>\` using RequestFromSchemas/ValidatedRequest, without a manual controller cast.`,
                 ),
               )
             }
@@ -784,7 +784,7 @@ export const RULES: PatternRule[] = [
             absoluteFilePath,
             statement,
             rule,
-            'Importe helpers/clients compartilhados em vez de usar `axios` diretamente fora do boundary HTTP.',
+            'Import shared helpers or clients instead of using `axios` directly outside the HTTP boundary.',
           ),
         )
       }
@@ -817,7 +817,7 @@ export const RULES: PatternRule[] = [
             absoluteFilePath,
             statement,
             rule,
-            'Consuma a API publica compartilhada em vez de importar `services/api/*` fora do boundary de services.',
+            'Use the shared public API instead of importing `services/api/*` outside the service boundary.',
           ),
         )
       }
@@ -832,7 +832,7 @@ export const RULES: PatternRule[] = [
  */
 function printHeader(): void {
   console.log(`${colors.bright}${colors.blue}Code Pattern Guard${colors.reset}`)
-  console.log(`${colors.gray}Detecta padroes de codigo proibidos ou indesejados fora do escopo ideal do lint global.${colors.reset}`)
+  console.log(`${colors.gray}Detects forbidden or undesirable code patterns outside the ideal scope of global linting.${colors.reset}`)
   console.log()
 }
 
@@ -928,7 +928,7 @@ export async function runCodePatternGuard(options: {
   const headingLabel = hasForbiddenViolations ? 'Violations found' : 'Improvement opportunities found'
 
   console.log(`${colors.bright}${headingColor}${headingLabel}${colors.reset}`)
-  console.log(`${colors.gray}Cada item abaixo representa um padrao que deve ser corrigido ou explicitamente reavaliado.${colors.reset}`)
+  console.log(`${colors.gray}Each item below represents a pattern that must be fixed or explicitly reassessed.${colors.reset}`)
   console.log()
 
   for (const rule of rules) {

@@ -36,16 +36,16 @@ describe('error utils', () => {
   describe('extractErrorMessage', () => {
     it('should extract message from ApiError-like details array', () => {
       const error = {
-        details: [{ message: 'Campo obrigatorio' }],
+        details: [{ message: 'Required field' }],
       }
-      expect(extractErrorMessage(error)).toBe('Campo obrigatorio')
+      expect(extractErrorMessage(error)).toBe('Required field')
     })
 
     it('should join mixed ApiError-like details array values when first detail has no message', () => {
       const error = {
-        details: [42, { message: 'Mensagem 1' }, true],
+        details: [42, { message: 'Message 1' }, true],
       }
-      expect(extractErrorMessage(error)).toBe('42, Mensagem 1, true')
+      expect(extractErrorMessage(error)).toBe('42, Message 1, true')
     })
 
     it('should extract message from response.data.details', () => {
@@ -74,22 +74,22 @@ describe('error utils', () => {
       const error = {
         response: {
           data: {
-            details: [{ message: 'Erro de validacao' }],
+            details: [{ message: 'Validation error' }],
           },
         },
       }
-      expect(extractErrorMessage(error)).toBe('Erro de validacao')
+      expect(extractErrorMessage(error)).toBe('Validation error')
     })
 
     it('should join mixed axios-like details array values when first detail has no message', () => {
       const error = {
         response: {
           data: {
-            details: [777, { message: 'Erro 1' }],
+            details: [777, { message: 'Error 1' }],
           },
         },
       }
-      expect(extractErrorMessage(error)).toBe('777, Erro 1')
+      expect(extractErrorMessage(error)).toBe('777, Error 1')
     })
 
     it('should extract message from BusinessError object', () => {

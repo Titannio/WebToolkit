@@ -183,14 +183,14 @@ export function parseFailureSummary(outputBuffer: string, code: number, hasFailu
 }
 
 export function formatFailureSummary(summary: Pick<WorkspaceResult, 'failedFiles' | 'failedTests' | 'failedTestsDetected'>): string {
-  const fileLabel = summary.failedFiles === 1 ? '1 arquivo' : `${summary.failedFiles} arquivos`
+  const fileLabel = summary.failedFiles === 1 ? '1 file' : `${summary.failedFiles} files`
   if (!summary.failedTestsDetected) {
-    return `falhas nao detectadas em ${fileLabel}`
+    return `failures not detected across ${fileLabel}`
   }
 
-  const failureLabel = summary.failedTests === 1 ? '1 falha' : `${summary.failedTests} falhas`
+  const failureLabel = summary.failedTests === 1 ? '1 failure' : `${summary.failedTests} failures`
 
-  return `${failureLabel} em ${fileLabel}`
+  return `${failureLabel} across ${fileLabel}`
 }
 
 type WorkspaceTestStatusLineOptions =
@@ -206,7 +206,7 @@ type WorkspaceTestStatusLineOptions =
 
 export function formatWorkspaceTestStatusLine(options: WorkspaceTestStatusLineOptions): string {
   if (options.failed) {
-    return `\x1b[31mERRO\x1b[0m - ${formatFailureSummary(options.summary)} (${options.duration}s)`
+    return `\x1b[31mERROR\x1b[0m - ${formatFailureSummary(options.summary)} (${options.duration}s)`
   }
 
   return `\x1b[32mOK\x1b[0m (${options.duration}s)`
@@ -281,7 +281,7 @@ async function runWorkspaceTest(target: WorkspaceTargetConfig, runtime: Runtime)
   const absPath = path.join(runtime.cwd, target.path)
   const totalFiles = countTestFiles(absPath, pattern, ignoreDirNames)
 
-  process.stdout.write(`- Testing \x1b[1m${target.name.padEnd(10)}\x1b[0m Preparando...`)
+  process.stdout.write(`- Testing \x1b[1m${target.name.padEnd(10)}\x1b[0m Preparing...`)
   if (totalFiles === 0) {
     console.info(`\r- Testing \x1b[1m${target.name.padEnd(10)}\x1b[0m \x1b[33mSKIPPED (No tests found)\x1b[0m      `)
     return {
@@ -401,7 +401,7 @@ export async function runWorkspaceTests(runtime: Runtime, rawArgs: string[]): Pr
     return
   }
 
-  console.info('\nIniciando bateria completa de testes...\n')
+  console.info('\nStarting full test suite...\n')
   const errorLogPath = path.join(runtime.cwd, testConfig.errorLogFile ?? 'tests_output_errors.log')
   fs.rmSync(errorLogPath, { force: true })
 
@@ -413,26 +413,26 @@ export async function runWorkspaceTests(runtime: Runtime, rawArgs: string[]): Pr
   const failedResults = results.filter((result) => result.failed)
   if (failedResults.length > 0) {
     fs.writeFileSync(errorLogPath, buildErrorLog(results, runtime), 'utf8')
-    console.info('\n\x1b[31mResumo de falhas:\x1b[0m')
+    console.info('\n\x1b[31mFailure summary:\x1b[0m')
     for (const result of failedResults) {
       console.info(`- ${result.target.name}: ${formatFailureSummary(result)}`)
     }
-    console.info(`\nDetalhes consolidados em ${path.relative(runtime.cwd, errorLogPath)}`)
+    console.info(`\nConsolidated details in ${path.relative(runtime.cwd, errorLogPath)}`)
     throw new Error('Workspace tests failed.')
   }
 
-  console.info('\n\x1b[32m✔ Todos os testes passaram com sucesso!\x1b[0m')
+  console.info('\n\x1b[32m✔ All tests passed successfully!\x1b[0m')
 }
 
 export async function runWorkspaceCoverage(runtime: Runtime, rawArgs: string[]): Promise<void> {
   const testConfig = getWorkspaceConfig(runtime.config)
   const pattern = new RegExp(testConfig.testFilePattern ?? defaultTestFilePattern)
   const ignoreDirNames = new Set(testConfig.ignoreDirNames ?? defaultIgnoreDirNames)
-  console.info('\nIniciando bateria completa de cobertura de testes...\n')
+  console.info('\nStarting full test coverage suite...\n')
 
   for (const target of resolveTargets(runtime, rawArgs)) {
     const totalFiles = countTestFiles(path.join(runtime.cwd, target.path), pattern, ignoreDirNames)
-    process.stdout.write(`- Coverage \x1b[1m${target.name.padEnd(10)}\x1b[0m Preparando...`)
+    process.stdout.write(`- Coverage \x1b[1m${target.name.padEnd(10)}\x1b[0m Preparing...`)
     if (totalFiles === 0) {
       console.info(`\r- Coverage \x1b[1m${target.name.padEnd(10)}\x1b[0m \x1b[33mSKIPPED (No tests found)\x1b[0m      `)
       continue
@@ -480,14 +480,14 @@ export async function runWorkspaceCoverage(runtime: Runtime, rawArgs: string[]):
     const duration = ((Date.now() - startedAt) / 1000).toFixed(1)
     drawProgressBar('Coverage', target.name, totalFiles, totalFiles, results, totalCoverage)
     if (code !== 0) {
-      console.info(`\x1b[31m FALHA\x1b[0m (${duration}s)`)
+      console.info(`\x1b[31m FAIL\x1b[0m (${duration}s)`)
       console.info(outputBuffer)
       throw new Error(`Coverage failed for ${target.name}.`)
     }
     console.info(`\x1b[32m OK\x1b[0m (${duration}s)`)
   }
 
-  console.info('\n\x1b[32m✔ Relatórios de cobertura gerados com sucesso!\x1b[0m')
+  console.info('\n\x1b[32m✔ Coverage reports generated successfully!\x1b[0m')
 }
 
 export function runWorkspaceTestTask(runtime: Runtime, taskName: string, extraArgs: string[]): void {
@@ -598,7 +598,7 @@ function runMultipleWorkspaceTestFiles(runtime: Runtime, testFiles: string[], ex
     const absPath = path.resolve(process.cwd(), testFile)
     const target = testConfig.workspaces.find((workspace) => isSameOrInsidePath(absPath, path.resolve(runtime.cwd, workspace.path)))
     if (!target) {
-      throw new Error(`O arquivo ${testFile} nao pertence a nenhum workspace conhecido.`)
+      throw new Error(`File ${testFile} does not belong to any known workspace.`)
     }
     const current = byWorkspace.get(target.package) ?? {
       absPkgPath: path.resolve(runtime.cwd, target.path),
@@ -610,7 +610,7 @@ function runMultipleWorkspaceTestFiles(runtime: Runtime, testFiles: string[], ex
 
   const flagArgs = extraArgs.filter((arg) => arg.startsWith('-'))
   for (const [targetPackage, workspaceData] of byWorkspace.entries()) {
-    console.info(`\nExecutando testes em \x1b[1m${targetPackage}\x1b[0m...\n`)
+    console.info(`\nRunning tests in \x1b[1m${targetPackage}\x1b[0m...\n`)
     const fileArgs = workspaceData.filePaths.map((filePath) => path.relative(workspaceData.absPkgPath, filePath).split(path.sep).join('/'))
     const commandSpec = buildPackageManagerCommand(runtime.config.packageManager, ['--filter', targetPackage, 'run', 'test', ...fileArgs, ...flagArgs])
     const result = spawnSync(commandSpec.command, commandSpec.args, {

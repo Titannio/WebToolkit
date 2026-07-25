@@ -33,10 +33,10 @@ const colors = {
 }
 
 const suspiciousPatterns: Array<{ regex: RegExp; reason: string }> = [
-  { regex: /\u00C3\u0192\u00C2/g, reason: 'Dupla corrupção de encoding detectada' },
-  { regex: /\u00C3[\u0080-\u00BF]/g, reason: 'UTF-8 texto lido como Latin-1 (prefixo U+00C3)' },
-  { regex: /\u00C2[\u0080-\u00BF]/g, reason: 'UTF-8 texto lido como Latin-1 (prefixo U+00C2)' },
-  { regex: /\uFFFD/g, reason: 'Caractere de substituição encontrado' },
+  { regex: /\u00C3\u0192\u00C2/g, reason: 'Double encoding corruption detected' },
+  { regex: /\u00C3[\u0080-\u00BF]/g, reason: 'UTF-8 text decoded as Latin-1 (U+00C3 prefix)' },
+  { regex: /\u00C2[\u0080-\u00BF]/g, reason: 'UTF-8 text decoded as Latin-1 (U+00C2 prefix)' },
+  { regex: /\uFFFD/g, reason: 'Replacement character found' },
 ]
 
 type Finding = {
@@ -159,39 +159,39 @@ function containsUnsafeControlChars(value: string): boolean {
 
 export function resolveReplacementWord(word: string): { replacementWord: string | null; skipReason: string | null } {
   if (REPLACEMENT_CHAR_PATTERN.test(word)) {
-    return { replacementWord: null, skipReason: 'contem caractere de substituicao; auto-fix bloqueado' }
+    return { replacementWord: null, skipReason: 'contains a replacement character; auto-fix blocked' }
   }
 
   if (DOUBLE_ENCODED_PATTERN.test(word)) {
-    return { replacementWord: null, skipReason: 'contem dupla corrupcao; auto-fix de uma passada bloqueado' }
+    return { replacementWord: null, skipReason: 'contains double encoding; single-pass auto-fix blocked' }
   }
 
   if (!AUTO_FIXABLE_PREFIX_PATTERN.test(word)) {
-    return { replacementWord: null, skipReason: 'fora do padrao conservador de palavra inteira' }
+    return { replacementWord: null, skipReason: 'outside the conservative whole-word pattern' }
   }
 
   const replacementWord = Buffer.from(word, 'latin1').toString('utf8')
   /* v8 ignore next -- a matched encoding prefix always converts to a different non-empty word */
   if (replacementWord.length === 0 || replacementWord === word) {
-    return { replacementWord: null, skipReason: 'a conversao nao produziu uma palavra diferente' }
+    return { replacementWord: null, skipReason: 'conversion did not produce a different word' }
   }
   if (containsUnsafeControlChars(replacementWord)) {
-    return { replacementWord: null, skipReason: 'a correção gerou caracteres de controle' }
+    return { replacementWord: null, skipReason: 'correction produced control characters' }
   }
 
   if (containsSuspiciousContent(replacementWord)) {
-    return { replacementWord: null, skipReason: 'a palavra corrigida ainda contem marcadores suspeitos' }
+    return { replacementWord: null, skipReason: 'corrected word still contains suspicious markers' }
   }
 
   const roundTrip = Buffer.from(replacementWord, 'utf8').toString('latin1')
   /* v8 ignore next -- valid latin1-to-UTF-8 candidates round-trip by construction */
   if (roundTrip !== word) {
-    return { replacementWord: null, skipReason: 'a correção falhou na validação reversivel utf8->latin1' }
+    return { replacementWord: null, skipReason: 'correction failed reversible utf8-to-latin1 validation' }
   }
 
   /* v8 ignore next -- affected words cannot cross the line boundaries used by the scanner */
   if (replacementWord.includes('\r') || replacementWord.includes('\n')) {
-    return { replacementWord: null, skipReason: 'a correção alteraria a estrutura de linhas' }
+    return { replacementWord: null, skipReason: 'correction would change the line structure' }
   }
 
   return { replacementWord, skipReason: null }
@@ -266,12 +266,12 @@ export function applyWordReplacements(content: string, fixes: Finding[]): string
 
   for (const finding of fixesDescending) {
     if (!finding.replacementWord) {
-      throw new Error(`Fix sem replacementWord em ${finding.file}:${finding.lineNumber}`)
+      throw new Error(`Fix is missing replacementWord at ${finding.file}:${finding.lineNumber}`)
     }
 
     const currentWord = updatedContent.slice(finding.absoluteWordStart, finding.absoluteWordEnd)
     if (currentWord !== finding.affectedWord) {
-      throw new Error(`O trecho esperado para correção mudou em ${finding.file}:${finding.lineNumber}`)
+      throw new Error(`Expected text for correction changed at ${finding.file}:${finding.lineNumber}`)
     }
 
     updatedContent = `${updatedContent.slice(0, finding.absoluteWordStart)}${finding.replacementWord}${updatedContent.slice(finding.absoluteWordEnd)}`
@@ -351,7 +351,7 @@ export function applyFixPlans(plans: FileFixPlan[], backupRoot: string): void {
     mkdirSync(dirname(backupPath), { recursive: true })
 
     if (existsSync(backupPath)) {
-      throw new Error(`Backup ja existe para ${plan.relativeFile}: ${backupPath}`)
+      throw new Error(`Backup already exists for ${plan.relativeFile}: ${backupPath}`)
     }
 
     writeFileSync(backupPath, plan.originalContent, 'utf8')
@@ -361,7 +361,7 @@ export function applyFixPlans(plans: FileFixPlan[], backupRoot: string): void {
     /* v8 ignore next -- post-write corruption safety net */
     if (rewrittenContent !== plan.updatedContent) {
       writeFileSync(plan.absoluteFile, plan.originalContent, 'utf8')
-      throw new Error(`Falha na verificação pos-gravação para ${plan.relativeFile}; arquivo original restaurado`)
+      throw new Error(`Post-write verification failed for ${plan.relativeFile}; original file restored`)
     }
   }
 }
@@ -401,9 +401,9 @@ export function verifyAndCleanupBackups(plans: FileFixPlan[], backupRoot: string
 function formatFinding(item: Finding): string {
   const fixSuffix = item.autoFixStatus === 'fixable' && item.replacementWord
     ? ` | auto-fix "${item.replacementWord}"`
-    : ` | sem auto-fix: ${item.skipReason}`
+    : ` | no auto-fix: ${item.skipReason}`
 
-  return `- ${item.file}:${item.lineNumber}: palavra "${item.affectedWord}" | matches "${item.snippets.join(', ')}" | ${item.reason}${fixSuffix}`
+  return `- ${item.file}:${item.lineNumber}: word "${item.affectedWord}" | matches "${item.snippets.join(', ')}" | ${item.reason}${fixSuffix}`
 }
 
 function scanFiles(files: string[], rootDir = process.cwd()): ScanResult {
@@ -429,15 +429,15 @@ function reportFindings(findings: Finding[], mode: 'scan' | 'fix' | 'post-fix'):
   const fixableFindings = findings.filter((finding) => finding.autoFixStatus === 'fixable')
   const manualFindings = findings.filter((finding) => finding.autoFixStatus === 'manual')
   const headline = mode === 'fix'
-    ? `INFO ${colors.yellow}[Encontrados]${colors.reset}: ${findings.length} indicio(s) de mojibake localizados antes da correcao.`
-    : `FAIL ${colors.red}[Falha]${colors.reset}: ${findings.length} indicio(s) de mojibake encontrados.`
+    ? `INFO ${colors.yellow}[Found]${colors.reset}: ${findings.length} mojibake indicator(s) found before correction.`
+    : `FAIL ${colors.red}[Failure]${colors.reset}: ${findings.length} mojibake indicator(s) found.`
 
   console.info(headline)
-  console.info(`INFO ${colors.cyan}[Resumo]${colors.reset}: ${fixableFindings.length} ocorrencia(s) com auto-fix conservador; ${manualFindings.length} ocorrencia(s) exigem revisao manual.`)
+  console.info(`INFO ${colors.cyan}[Summary]${colors.reset}: ${fixableFindings.length} occurrence(s) support conservative auto-fix; ${manualFindings.length} occurrence(s) require manual review.`)
 
   for (const item of findings) {
     console.info(formatFinding(item))
-    console.info(`  linha: ${item.lineText}`)
+    console.info(`  line: ${item.lineText}`)
   }
 }
 
@@ -452,7 +452,7 @@ export function runMojibakeGuard(
   const initialScan = scanFiles(files, rootDir)
 
   if (initialScan.findings.length === 0) {
-    console.info(`OK ${colors.green}${colors.bright}[OK]${colors.reset}: Nenhum indicio de mojibake encontrado.`)
+    console.info(`OK ${colors.green}${colors.bright}[OK]${colors.reset}: No mojibake indicators found.`)
     return 0
   }
 
@@ -466,11 +466,11 @@ export function runMojibakeGuard(
   const appliedFixCount = plans.reduce((count, plan) => count + plan.appliedFixes.length, 0)
 
   if (plans.length === 0 || appliedFixCount === 0) {
-    console.info(`INFO ${colors.yellow}[Auto-fix]${colors.reset}: Nenhuma correção automatica elegivel foi aplicada.`)
+    console.info(`INFO ${colors.yellow}[Auto-fix]${colors.reset}: No eligible automatic fix was applied.`)
     return 1
   }
 
-  console.info(`INFO ${colors.yellow}[Auto-fix]${colors.reset}: ${appliedFixCount} palavra(s) elegivel(is) em ${plans.length} arquivo(s).`)
+  console.info(`INFO ${colors.yellow}[Auto-fix]${colors.reset}: ${appliedFixCount} eligible word(s) across ${plans.length} file(s).`)
   for (const plan of plans) {
     for (const fix of plan.appliedFixes) {
       console.info(`  ${plan.relativeFile}:${fix.lineNumber}: "${fix.affectedWord}" -> "${fix.replacementWord}"`)
@@ -478,7 +478,7 @@ export function runMojibakeGuard(
   }
 
   if (options.dryRun) {
-    console.info(`INFO ${colors.yellow}[Dry-run]${colors.reset}: Nenhum arquivo foi alterado.`)
+    console.info(`INFO ${colors.yellow}[Dry-run]${colors.reset}: No files were changed.`)
     return 1
   }
 
@@ -490,26 +490,26 @@ export function runMojibakeGuard(
     const cleanupResult = verifyAndCleanupBackups(plans, backupRoot)
     /* v8 ignore next -- cleanup failures are covered through verifyAndCleanupBackups */
     if (cleanupResult.deletedBackups.length > 0) {
-      console.info(`INFO ${colors.cyan}[Backups]${colors.reset}: ${cleanupResult.deletedBackups.length} backup(s) temporario(s) removido(s) apos verificacao.`)
+      console.info(`INFO ${colors.cyan}[Backups]${colors.reset}: ${cleanupResult.deletedBackups.length} temporary backup(s) removed after verification.`)
     }
     /* v8 ignore next -- cleanup failures are covered through verifyAndCleanupBackups */
     if (cleanupResult.keptBackups.length > 0) {
-      console.info(`INFO ${colors.yellow}[Backups]${colors.reset}: ${cleanupResult.keptBackups.length} backup(s) mantido(s) em ${cleanupResult.backupRoot}.`)
+      console.info(`INFO ${colors.yellow}[Backups]${colors.reset}: ${cleanupResult.keptBackups.length} backup(s) kept at ${cleanupResult.backupRoot}.`)
     }
 
     const postFixScan = scanFiles(files, rootDir)
     if (postFixScan.findings.length === 0) {
-      console.info(`OK ${colors.green}${colors.bright}[Auto-fix aplicado]${colors.reset}: correcoes gravadas e backups temporarios verificados.`)
+      console.info(`OK ${colors.green}${colors.bright}[Auto-fix applied]${colors.reset}: fixes saved and temporary backups verified.`)
       return 0
     }
 
-    console.info(`INFO ${colors.yellow}[Pos-fix]${colors.reset}: ainda restam ocorrencias que exigem nova execução ou revisao manual.`)
+    console.info(`INFO ${colors.yellow}[Post-fix]${colors.reset}: remaining occurrences require another run or manual review.`)
     reportFindings(postFixScan.findings, 'post-fix')
     return 1
   /* v8 ignore start -- filesystem write failure adapter */
   } catch (error) {
-    console.error(`FAIL ${colors.red}[Erro]${colors.reset}: ${(error as Error).message}`)
-    console.error(`INFO ${colors.yellow}[Backups]${colors.reset}: backups desta execução foram mantidos em ${backupRoot}.`)
+    console.error(`FAIL ${colors.red}[Error]${colors.reset}: ${(error as Error).message}`)
+    console.error(`INFO ${colors.yellow}[Backups]${colors.reset}: backups from this run were kept at ${backupRoot}.`)
     return 1
   }
   /* v8 ignore stop */

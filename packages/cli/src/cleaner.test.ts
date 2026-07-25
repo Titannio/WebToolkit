@@ -335,7 +335,7 @@ describe('cleaner behavior', () => {
     const interactiveRoot = await createTempRoot()
     Object.defineProperty(process.stdin, 'isTTY', { configurable: true, value: true })
     Object.defineProperty(process.stdout, 'isTTY', { configurable: true, value: true })
-    cleanerMocks.question.mockResolvedValue('sim')
+    cleanerMocks.question.mockResolvedValue('yes')
     await runCleaner(parseCleanArgs(['--level=nuclear', '--no-store-prune']), {
       cwd: interactiveRoot,
       config: mergeConfig(),

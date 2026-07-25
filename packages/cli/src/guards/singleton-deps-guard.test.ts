@@ -65,8 +65,8 @@ describe('singleton dependency validation', () => {
         manifest: { dependencies: { zod: '^3.0.0' } },
       }],
     })
-    expect(issues.map((issue) => issue.message).join('\n')).toContain('semver/range valido')
-    expect(issues.map((issue) => issue.message).join('\n')).toContain('multiplas versoes')
+    expect(issues.map((issue) => issue.message).join('\n')).toContain('valid semver range')
+    expect(issues.map((issue) => issue.message).join('\n')).toContain('multiple versions')
   })
 
   it('accepts one compatible resolved singleton', () => {
@@ -89,8 +89,8 @@ describe('singleton dependency validation', () => {
         manifest: { dependencies: { zod: '^2.0.0' } },
       }],
     })
-    expect(issues.map((issue) => issue.message).join('\n')).toContain('overrides exige compatibilidade')
-    expect(issues.map((issue) => issue.message).join('\n')).toContain('deve aceitar a versao singleton')
+    expect(issues.map((issue) => issue.message).join('\n')).toContain('overrides require compatibility')
+    expect(issues.map((issue) => issue.message).join('\n')).toContain('must accept the resolved singleton version')
   })
 })
 

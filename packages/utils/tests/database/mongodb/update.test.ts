@@ -6,12 +6,12 @@ describe('mongo/update', () => {
     expect(
       toSetPaths({
         personInfo: {
-          personFullname: 'Maria Silva',
+          personFullname: 'Alice Smith',
           personCPF: '12345678901',
         },
       }),
     ).toEqual({
-      'personInfo.personFullname': 'Maria Silva',
+      'personInfo.personFullname': 'Alice Smith',
       'personInfo.personCPF': '12345678901',
     })
   })

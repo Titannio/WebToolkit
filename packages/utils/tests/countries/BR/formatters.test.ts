@@ -91,12 +91,12 @@ describe('Formatters Utils', () => {
       expect(maskPhoneBR('11987654321')).toBe('(11) 98765-4321')
     })
 
-    it('should not normalize leading zero from three-digit DDD', () => {
+    it('should not normalize a leading zero from a three-digit area code', () => {
       expect(maskPhoneBR('021999999999')).toBe('(02) 19999-9999')
       expect(maskPhoneBR('(043) 3333-4444')).toBe('(04) 33333-4444')
     })
 
-    it('should not normalize Brazil DDI prefixes', () => {
+    it('should not normalize Brazilian country calling code prefixes', () => {
       expect(maskPhoneBR('+55 (21) 99999-9999')).toBe('(55) 21999-9999')
       expect(maskPhoneBR('55 043 3333-4444')).toBe('(55) 04333-3344')
       expect(maskPhoneBR('05521999999999')).toBe('(05) 52199-9999')

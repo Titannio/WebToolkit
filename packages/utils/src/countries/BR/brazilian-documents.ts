@@ -6,7 +6,7 @@
 import { PHONE_TYPE, type PhoneType } from '../../types/phone.js'
 
 /**
- * Regular expression for validating and matching CPF (Cadastro de Pessoas Físicas) format.
+ * Regular expression for validating and matching Brazil's CPF individual taxpayer identifier.
  * Format: XXX.XXX.XXX-XX
  * 
  * @see {@link formatCPF} for formatting raw strings to this pattern.
@@ -180,7 +180,7 @@ export function formatPhoneForDisplay(
 }
 
 /**
- * Validates a CPF (Cadastro de Pessoas Físicas) using the official checksum algorithm.
+ * Validates a Brazilian CPF individual taxpayer identifier using the official checksum algorithm.
  * 
  * This function performs a complete mathematical validation, including
  * check digit calculation and verification against known invalid repetitive sequences.
@@ -213,7 +213,7 @@ export function isValidCPF(cpf: string): boolean {
 }
 
 /**
- * Validates a CNPJ (Cadastro Nacional da Pessoa Jurídica) using the official checksum algorithm.
+ * Validates a Brazilian CNPJ company taxpayer identifier using the official checksum algorithm.
  * 
  * Performs mathematical verification of the check digits and ensures
  * the document is not a known invalid repetitive sequence.

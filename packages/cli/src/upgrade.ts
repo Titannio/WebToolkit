@@ -662,8 +662,8 @@ export function parseCliArgs(runtime: Runtime, rawArgs: string[]): UpgradeOption
 export function parseYesNo(answer: string, defaultValue: boolean): boolean | null {
   const normalized = answer.trim().toLowerCase()
   if (!normalized) return defaultValue
-  if (['s', 'sim', 'y', 'yes'].includes(normalized)) return true
-  if (['n', 'nao', 'não', 'no'].includes(normalized)) return false
+  if (['y', 'yes'].includes(normalized)) return true
+  if (['n', 'no'].includes(normalized)) return false
   return null
 }
 
