@@ -28,7 +28,7 @@ function getArgValue(args: string[], name: string): string | null {
 
 function getSelectedApps(runtime: Runtime, args: string[]): string[] {
   const appsArg = getArgValue(args, 'apps')
-  if (!appsArg) return [...(runtime.config.devWatch?.defaultApps ?? [])]
+  if (!appsArg) return [...runtime.config.devWatch!.defaultApps]
   return appsArg.split(',').map((app) => app.trim()).filter(Boolean)
 }
 
@@ -79,7 +79,12 @@ function listListeningPidsByPort(port: number): number[] {
 
   const result = spawnSync('lsof', ['-ti', `TCP:${port}`, '-sTCP:LISTEN'], { encoding: 'utf8', windowsHide: true })
   if (result.error || result.status !== 0) return []
-  return result.stdout.split(/\r?\n/u).map((value) => Number(value.trim())).filter((pid) => Number.isInteger(pid))
+  return result.stdout
+    .split(/\r?\n/u)
+    .map((value) => value.trim())
+    .filter(Boolean)
+    .map(Number)
+    .filter((pid) => Number.isInteger(pid))
 }
 
 function stopProcessTree(pid: number): boolean {
@@ -152,7 +157,11 @@ function runWatch(runtime: Runtime, selectedApps: Array<{ key: string; definitio
     if (!definition.filter) throw new Error(`devWatch app "${key}" must define filter to run watch mode.`)
     const extraArgs = silent ? ['--', '--logLevel', 'warn'] : []
     const commandSpec = buildPackageManagerCommand(runtime.config.packageManager, ['--filter', definition.filter, 'run', 'dev:skip-check', ...extraArgs])
-    const child = spawnCommand(commandSpec.command, commandSpec.args ?? [], { stdio: 'inherit', cwd: runtime.cwd })
+    const child = spawnCommand(commandSpec.command, commandSpec.args, {
+      cwd: runtime.cwd,
+      env: { ...process.env, FORCE_COLOR: '1' },
+      stdio: 'inherit',
+    })
     children.push(child)
     child.on('error', (error) => {
       console.error(`[${key.toUpperCase()}] ${error.message}`)

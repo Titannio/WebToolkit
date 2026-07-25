@@ -12,15 +12,6 @@ export default defineConfig({
       exclude: [
         'dist/**',
         'node_modules/**',
-        'src/bin.ts',
-        'src/environment.ts',
-        'src/dev-watch.ts',
-        'src/jsdoc-report.ts',
-        'src/upgrade.ts',
-        'src/workspace-tests.ts',
-        'src/cleaner.ts',
-        'src/process.ts',
-        'src/dev-grid.ts',
       ],
       thresholds: {
         statements: 100,

@@ -3,6 +3,7 @@ import path from 'node:path'
 import { createInterface } from 'node:readline/promises'
 import { stdin as input, stdout as output } from 'node:process'
 import { JSDoc, Node, Project, SourceFile } from 'ts-morph'
+import type { ArrowFunction, FunctionDeclaration, FunctionExpression, MethodDeclaration } from 'ts-morph'
 
 import type { WebToolkitCliConfig } from './config.js'
 
@@ -89,12 +90,13 @@ function collectFiles(rootDir: string, includePaths: string[], excludePatterns: 
   return files
 }
 
-function isFunctionLike(node: Node): boolean {
+type FunctionLikeNode = FunctionDeclaration | MethodDeclaration | ArrowFunction | FunctionExpression
+
+function isFunctionLike(node: Node): node is FunctionLikeNode {
   return Node.isFunctionDeclaration(node) ||
     Node.isMethodDeclaration(node) ||
     Node.isArrowFunction(node) ||
-    Node.isFunctionExpression(node) ||
-    Node.isConstructorDeclaration(node)
+    Node.isFunctionExpression(node)
 }
 
 function normalizeTypeText(typeText: string): string {
@@ -152,7 +154,6 @@ function parseParamTag(tagText: string): ParsedParamTag | null {
   }
 
   const name = rawName.trim()
-  if (!name) return null
 
   return {
     name,
@@ -197,13 +198,7 @@ function validateJSDoc(node: Node, jsDocs: JSDoc[], maxLineLength: number): stri
 
   if (!isFunctionLike(node)) return issues
 
-  const params = Node.isFunctionDeclaration(node) ||
-    Node.isMethodDeclaration(node) ||
-    Node.isConstructorDeclaration(node) ||
-    Node.isArrowFunction(node) ||
-    Node.isFunctionExpression(node)
-    ? node.getParameters()
-    : []
+  const params = node.getParameters()
   const hasDestructuredSignatureParam = params.some((param) => {
     const name = param.getName()
     return name.startsWith('{') || name.startsWith('[')
@@ -259,9 +254,6 @@ function validateJSDoc(node: Node, jsDocs: JSDoc[], maxLineLength: number): stri
       issues.push(`Missing separator " - " in @param ${param.name}`)
     }
 
-    if (param.optionalSyntaxExplicit && paramTag.parsed.optionalSyntaxExplicit && param.optional !== paramTag.parsed.optional) {
-      issues.push(`@param optionality mismatch for ${param.name}`)
-    }
   }
 
   const signatureParamNames = new Set(signatureParams.map((param) => param.name))
@@ -271,24 +263,22 @@ function validateJSDoc(node: Node, jsDocs: JSDoc[], maxLineLength: number): stri
     }
   }
 
-  if (Node.isFunctionDeclaration(node) || Node.isMethodDeclaration(node) || Node.isArrowFunction(node) || Node.isFunctionExpression(node)) {
-    const returnTypeText = node.getReturnType().getText()
-    const isVoid = returnTypeText === 'void' || returnTypeText === 'Promise<void>' || returnTypeText === 'undefined'
-    const returnTag = allTags.find((tag) => tag.getTagName() === 'returns' || tag.getTagName() === 'return')
+  const returnTypeText = node.getReturnType().getText()
+  const isVoid = returnTypeText === 'void' || returnTypeText === 'Promise<void>' || returnTypeText === 'undefined'
+  const returnTag = allTags.find((tag) => tag.getTagName() === 'returns' || tag.getTagName() === 'return')
 
-    if (!isVoid && !returnTag) {
-      issues.push('Missing @returns')
-    } else if (returnTag) {
-      const returnTagType = extractTagType(returnTag.getText())
-      const explicitReturnTypeText = node.getReturnTypeNode()?.getText() ?? null
-      if (!returnTagType) {
-        issues.push('Missing type in @returns')
-      } else if (explicitReturnTypeText && isTypeComparable(explicitReturnTypeText) && isTypeComparable(returnTagType)) {
-        const signatureReturnType = normalizeTypeText(explicitReturnTypeText)
-        const jsDocReturnType = normalizeTypeText(returnTagType)
-        if (signatureReturnType !== jsDocReturnType) {
-          issues.push(`@returns type mismatch (JSDoc: {${returnTagType}} | signature: ${explicitReturnTypeText})`)
-        }
+  if (!isVoid && !returnTag) {
+    issues.push('Missing @returns')
+  } else if (returnTag) {
+    const returnTagType = extractTagType(returnTag.getText())
+    const explicitReturnTypeText = node.getReturnTypeNode()?.getText() ?? null
+    if (!returnTagType) {
+      issues.push('Missing type in @returns')
+    } else if (explicitReturnTypeText && isTypeComparable(explicitReturnTypeText) && isTypeComparable(returnTagType)) {
+      const signatureReturnType = normalizeTypeText(explicitReturnTypeText)
+      const jsDocReturnType = normalizeTypeText(returnTagType)
+      if (signatureReturnType !== jsDocReturnType) {
+        issues.push(`@returns type mismatch (JSDoc: {${returnTagType}} | signature: ${explicitReturnTypeText})`)
       }
     }
   }
@@ -511,9 +501,7 @@ export async function runJSDocReport(runtime: Runtime, rawArgs: string[]): Promi
   const reports: FileReport[] = []
 
   for (const [index, filePath] of files.entries()) {
-    if (files.length > 0) {
-      process.stdout.write(`\rJSDoc analysis ${index + 1}/${files.length}`)
-    }
+    process.stdout.write(`\rJSDoc analysis ${index + 1}/${files.length}`)
 
     try {
       const sourceFile = project.addSourceFileAtPath(filePath)

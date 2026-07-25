@@ -27,7 +27,7 @@ type WorkspaceResult = {
 const defaultTestFilePattern = '\\.(test|spec)\\.(ts|tsx|js|jsx)$'
 const defaultIgnoreDirNames = ['node_modules', 'dist', '.git']
 
-function getWorkspaceConfig(config: WebToolkitCliConfig) {
+export function getWorkspaceConfig(config: WebToolkitCliConfig) {
   if (!config.workspaceTests?.workspaces?.length) {
     throw new Error('workspaceTests.workspaces is not configured.')
   }
@@ -35,7 +35,7 @@ function getWorkspaceConfig(config: WebToolkitCliConfig) {
   return config.workspaceTests
 }
 
-function countTestFiles(dirPath: string, pattern: RegExp, ignoreDirNames: Set<string>): number {
+export function countTestFiles(dirPath: string, pattern: RegExp, ignoreDirNames: Set<string>): number {
   let count = 0
   if (!fs.existsSync(dirPath)) return 0
 
@@ -53,23 +53,23 @@ function countTestFiles(dirPath: string, pattern: RegExp, ignoreDirNames: Set<st
   return count
 }
 
-function stripAnsi(value: string): string {
+export function stripAnsi(value: string): string {
   return value.replace(/\x1B\[[0-9;?]*[ -/]*[@-~]/g, '')
 }
 
-function normalizeReportLine(line: string): string {
+export function normalizeReportLine(line: string): string {
   return line.replace(/^(?:@[\w.-]+\/)?[\w.-]+:[\w:-]+:\s*/, '').trimEnd()
 }
 
-function findFailedTestsSectionStartIndex(lines: string[]): number {
+export function findFailedTestsSectionStartIndex(lines: string[]): number {
   return lines.findIndex((line) => /-+\s*Failed Tests\b/i.test(line.trim()) || /⎯+\s*Failed Tests\b/i.test(line.trim()))
 }
 
-function isFailureStartLine(line: string): boolean {
+export function isFailureStartLine(line: string): boolean {
   return /\bFailed Tests\s+\d+/i.test(line) || /^\s*FAIL\s+/.test(line) || /^\s*[×✕✖]\s+/.test(line)
 }
 
-function isFailureSummaryLine(line: string): boolean {
+export function isFailureSummaryLine(line: string): boolean {
   return /^\s*Test Files\s+/i.test(line) ||
     /^\s*Tests\s+/i.test(line) ||
     /^\s*Start at\s+/i.test(line) ||
@@ -78,7 +78,7 @@ function isFailureSummaryLine(line: string): boolean {
     /\bERROR\b.*(?:exited|run failed)/i.test(line)
 }
 
-function isFailureLogNoiseLine(line: string): boolean {
+export function isFailureLogNoiseLine(line: string): boolean {
   const trimmed = line.trim()
   if (!trimmed) return false
   return /^✓\s+/.test(trimmed) ||
@@ -95,7 +95,7 @@ function isFailureLogNoiseLine(line: string): boolean {
     /was not wrapped in act\(\.\.\.\)/i.test(trimmed)
 }
 
-function clampFailureExcerptLines(lines: string[], maxLines: number): string[] {
+export function clampFailureExcerptLines(lines: string[], maxLines: number): string[] {
   if (lines.length <= maxLines) return lines
   const headCount = Math.floor(maxLines * 0.65)
   const tailCount = maxLines - headCount - 1
@@ -106,7 +106,7 @@ function clampFailureExcerptLines(lines: string[], maxLines: number): string[] {
   ]
 }
 
-function extractFailureExcerpt(outputBuffer: string, maxLines: number): string[] {
+export function extractFailureExcerpt(outputBuffer: string, maxLines: number): string[] {
   const lines = stripAnsi(outputBuffer).split(/\r?\n/).map(normalizeReportLine)
   const failedTestsSectionStartIndex = findFailedTestsSectionStartIndex(lines)
 
@@ -146,7 +146,7 @@ function extractFailureExcerpt(outputBuffer: string, maxLines: number): string[]
   return clampFailureExcerptLines(excerpt.length > 0 ? excerpt : lines.filter((line) => !isFailureLogNoiseLine(line)).slice(-80), maxLines)
 }
 
-function parseFailureSummary(outputBuffer: string, code: number, hasFailure: boolean) {
+export function parseFailureSummary(outputBuffer: string, code: number, hasFailure: boolean) {
   const cleanOutput = stripAnsi(outputBuffer)
   const summary = {
     failedFiles: 0,
@@ -224,7 +224,7 @@ export function progressBlockHasFailure(index: number, width: number, total: num
   return false
 }
 
-function drawProgressBar(label: string, name: string, completed: number, total: number, results: boolean[], coverage: number | null = null): void {
+export function drawProgressBar(label: string, name: string, completed: number, total: number, results: boolean[], coverage: number | null = null): void {
   const safeTotal = Math.max(total, 1)
   const safeCompleted = Math.min(Math.max(completed, 0), safeTotal)
   const width = label === 'Coverage' ? 40 : 60
@@ -247,7 +247,7 @@ function drawProgressBar(label: string, name: string, completed: number, total: 
   process.stdout.write(`\r- ${label} \x1b[1m${name.padEnd(10)}\x1b[0m [${barStr}] ${percentage}% (${safeCompleted}/${total})${coverageText} `)
 }
 
-function parseTestFileLine(line: string): { filePath: string; isSuccess: boolean } | null {
+export function parseTestFileLine(line: string): { filePath: string; isSuccess: boolean } | null {
   const cleanLine = stripAnsi(line)
   const match = cleanLine.match(/(✓|×|✕|✖|FAIL|PASS|failed|passed)\s+(.+?(\.test\.|\.spec\.)[a-zA-Z]+)/i)
   if (!match) return null
@@ -258,7 +258,7 @@ function parseTestFileLine(line: string): { filePath: string; isSuccess: boolean
   }
 }
 
-function resolveTargets(runtime: Runtime, rawArgs: string[]): WorkspaceTargetConfig[] {
+export function resolveTargets(runtime: Runtime, rawArgs: string[]): WorkspaceTargetConfig[] {
   const testConfig = getWorkspaceConfig(runtime.config)
   let targets = testConfig.workspaces
   const filterValue = getFilterValue(rawArgs)
@@ -305,7 +305,7 @@ async function runWorkspaceTest(target: WorkspaceTargetConfig, runtime: Runtime)
   let outputBuffer = ''
   const startedAt = Date.now()
   const commandSpec = buildPackageManagerCommand(runtime.config.packageManager, ['turbo', 'run', 'test', '--filter', target.package, '--', '--reporter=verbose'])
-  const commandText = `${commandSpec.command} ${(commandSpec.args ?? []).join(' ')}`
+  const commandText = `${commandSpec.command} ${commandSpec.args.join(' ')}`
 
   drawProgressBar('Testing', target.name, 0, totalFiles, results)
 
@@ -331,7 +331,7 @@ async function runWorkspaceTest(target: WorkspaceTargetConfig, runtime: Runtime)
       resolve({ target, command: commandText, duration, exitCode, outputBuffer, failed, ...summary })
     }
 
-    const child = spawn(commandSpec.command, commandSpec.args ?? [], {
+    const child = spawn(commandSpec.command, commandSpec.args, {
       cwd: runtime.cwd,
       env: { ...process.env, FORCE_COLOR: '1', CI: '1', NODE_OPTIONS: '--no-deprecation' },
       stdio: ['ignore', 'pipe', 'pipe'],
@@ -362,7 +362,7 @@ async function runWorkspaceTest(target: WorkspaceTargetConfig, runtime: Runtime)
   })
 }
 
-function buildErrorLog(results: WorkspaceResult[], runtime: Runtime): string {
+export function buildErrorLog(results: WorkspaceResult[], runtime: Runtime): string {
   const failedResults = results.filter((result) => result.failed)
   if (failedResults.length === 0) return ''
   const testConfig = getWorkspaceConfig(runtime.config)
@@ -447,7 +447,7 @@ export async function runWorkspaceCoverage(runtime: Runtime, rawArgs: string[]):
     drawProgressBar('Coverage', target.name, 0, totalFiles, results, totalCoverage)
 
     const code = await new Promise<number>((resolve) => {
-      const child = spawn(commandSpec.command, commandSpec.args ?? [], {
+      const child = spawn(commandSpec.command, commandSpec.args, {
         cwd: runtime.cwd,
         env: { ...process.env, FORCE_COLOR: '1', CI: '1', NODE_OPTIONS: '--no-deprecation' },
         stdio: ['ignore', 'pipe', 'pipe'],
@@ -525,7 +525,7 @@ export function runWorkspaceTestTask(runtime: Runtime, taskName: string, extraAr
       ? ['turbo', 'run', taskName, `--filter=${packageJson.name}`, '--', ...extraArgs]
       : ['turbo', 'run', taskName, `--filter=${packageJson.name}`])
 
-  const result = spawnSync(commandSpec.command, commandSpec.args ?? [], {
+  const result = spawnSync(commandSpec.command, commandSpec.args, {
     cwd: isRunningInsideTurbo ? packageDir : runtime.cwd,
     env: {
       ...process.env,
@@ -540,7 +540,7 @@ export function runWorkspaceTestTask(runtime: Runtime, taskName: string, extraAr
   process.exit(result.status ?? 1)
 }
 
-function isSameOrInsidePath(childPath: string, parentPath: string): boolean {
+export function isSameOrInsidePath(childPath: string, parentPath: string): boolean {
   const relativePath = path.relative(parentPath, childPath)
   return relativePath === '' || (!relativePath.startsWith('..') && !path.isAbsolute(relativePath))
 }
@@ -561,7 +561,7 @@ const flagsWithValue = new Set([
   '-t',
 ])
 
-function splitArgs(rawArgs: string[]): { testFiles: string[]; extraArgs: string[] } {
+export function splitArgs(rawArgs: string[]): { testFiles: string[]; extraArgs: string[] } {
   const testFiles: string[] = []
   const extraArgs: string[] = []
 
@@ -581,7 +581,7 @@ function splitArgs(rawArgs: string[]): { testFiles: string[]; extraArgs: string[
   return { testFiles, extraArgs }
 }
 
-function getFilterValue(rawArgs: string[]): string | null {
+export function getFilterValue(rawArgs: string[]): string | null {
   for (let index = 0; index < rawArgs.length; index += 1) {
     const arg = rawArgs[index]
     if (arg === '--filter' && rawArgs[index + 1]) return rawArgs[index + 1]
@@ -613,7 +613,7 @@ function runMultipleWorkspaceTestFiles(runtime: Runtime, testFiles: string[], ex
     console.info(`\nExecutando testes em \x1b[1m${targetPackage}\x1b[0m...\n`)
     const fileArgs = workspaceData.filePaths.map((filePath) => path.relative(workspaceData.absPkgPath, filePath).split(path.sep).join('/'))
     const commandSpec = buildPackageManagerCommand(runtime.config.packageManager, ['--filter', targetPackage, 'run', 'test', ...fileArgs, ...flagArgs])
-    const result = spawnSync(commandSpec.command, commandSpec.args ?? [], {
+    const result = spawnSync(commandSpec.command, commandSpec.args, {
       cwd: runtime.cwd,
       stdio: 'inherit',
       env: { ...process.env, FORCE_COLOR: '1' },

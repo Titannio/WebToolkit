@@ -30,7 +30,7 @@ import { PassThrough } from 'node:stream'
 import { spawn, spawnSync } from 'node:child_process'
 import { PassThrough as NodePassThrough } from 'node:stream'
 
-import { buildFreshPackageManagerCommand, buildPackageManagerCommand, resolveCwd, resolveSpawnSpec, runCommandBuffered, runCommandInherited } from './process.js'
+import { buildFreshPackageManagerCommand, buildPackageManagerCommand, formatCommand, resolveCwd, resolveSpawnSpec, runCommandBuffered, runCommandInherited } from './process.js'
 
 function resetChildMocks() {
   spawned.length = 0
@@ -66,6 +66,11 @@ describe('process helpers', () => {
     expect(resolveCwd('/root', '../other')).toBe(path.join('/root', '../other'))
     expect(resolveCwd('/root', './child')).toBe(path.join('/root', './child'))
     expect(resolveCwd('/root')).toBe('/root')
+  })
+
+  it('formats plain and quoted command arguments', () => {
+    expect(formatCommand('node')).toBe('node')
+    expect(formatCommand('node', ['plain', 'two words', 'a"b'])).toBe('node plain "two words" "a\\"b"')
   })
 
   it('builds package-manager commands using npm_execpath when available', () => {
@@ -120,8 +125,27 @@ describe('process helpers', () => {
     }
   })
 
+  it('keeps non-pnpm package managers and fresh non-Windows commands unchanged', () => {
+    vi.spyOn(process, 'platform', 'get').mockReturnValue('linux')
+    expect(buildPackageManagerCommand('npm', ['install'])).toEqual({ command: 'npm', args: ['install'] })
+    expect(buildFreshPackageManagerCommand('pnpm', ['install'])).toEqual({ command: 'pnpm', args: ['install'] })
+  })
+
+  it('uses pnpm.cmd on Windows without an npm broker', () => {
+    vi.spyOn(process, 'platform', 'get').mockReturnValue('win32')
+    const original = process.env.npm_execpath
+    delete process.env.npm_execpath
+    try {
+      expect(buildPackageManagerCommand('pnpm', [])).toEqual({ command: 'pnpm.cmd', args: [] })
+    } finally {
+      if (original === undefined) delete process.env.npm_execpath
+      else process.env.npm_execpath = original
+    }
+  })
+
   it('wraps package-manager commands through cmd.exe on Windows', () => {
     const platform = vi.spyOn(process, 'platform', 'get').mockReturnValue('win32')
+    const originalComSpec = process.env.ComSpec
 
     try {
       expect(resolveSpawnSpec('pnpm', ['run', 'test'])).toEqual({
@@ -132,7 +156,18 @@ describe('process helpers', () => {
         command: 'node',
         args: ['script.js'],
       })
+      expect(resolveSpawnSpec('pnpm.cmd')).toEqual({
+        command: process.env.ComSpec ?? 'cmd.exe',
+        args: ['/d', '/s', '/c', 'pnpm'],
+      })
+      delete process.env.ComSpec
+      expect(resolveSpawnSpec('npm', [])).toEqual({
+        command: 'cmd.exe',
+        args: ['/d', '/s', '/c', 'npm'],
+      })
     } finally {
+      if (originalComSpec === undefined) delete process.env.ComSpec
+      else process.env.ComSpec = originalComSpec
       platform.mockRestore()
     }
   })
@@ -152,6 +187,35 @@ describe('process execution helpers', () => {
       shell: false,
       stdio: ['ignore', 'pipe', 'pipe'],
     })
+  })
+
+  it('supports missing streams, overridden environment, absolute cwd, and null close codes', async () => {
+    const proc = new EventEmitter() as TestChildProcess
+    vi.mocked(spawn).mockImplementation(() => {
+      setTimeout(() => proc.emit('close', null), 0)
+      return proc as unknown as ReturnType<typeof spawn>
+    })
+
+    await expect(runCommandBuffered({
+      command: 'node',
+      cwd: path.resolve('/absolute'),
+      env: { FORCE_COLOR: '0', CUSTOM: 'yes' },
+    }, '/repo')).resolves.toEqual({ code: 1, output: '' })
+    expect(spawn).toHaveBeenCalledWith('node', [], expect.objectContaining({
+      cwd: path.resolve('/absolute'),
+      env: expect.objectContaining({ FORCE_COLOR: '0', CUSTOM: 'yes' }),
+    }))
+  })
+
+  it('rejects buffered spawn errors', async () => {
+    const proc = new EventEmitter() as TestChildProcess
+    proc.stdout = new PassThrough()
+    proc.stderr = new PassThrough()
+    vi.mocked(spawn).mockImplementation(() => {
+      setTimeout(() => proc.emit('error', new Error('spawn failed')), 0)
+      return proc as unknown as ReturnType<typeof spawn>
+    })
+    await expect(runCommandBuffered({ command: 'bad' }, '/repo')).rejects.toThrow('spawn failed')
   })
 
   it('inherits commands with spawnSync output', () => {
@@ -174,5 +238,14 @@ describe('process execution helpers', () => {
     vi.mocked(spawnSync).mockReturnValue({ error } as never)
 
     expect(() => runCommandInherited({ command: 'bad', args: [] }, '/repo')).toThrow('boom')
+  })
+
+  it('maps null inherited status and supports defaults and environment overrides', () => {
+    vi.spyOn(process, 'platform', 'get').mockReturnValue('linux')
+    vi.mocked(spawnSync).mockReturnValue({ status: null } as never)
+    expect(runCommandInherited({ command: 'node', env: { FORCE_COLOR: '0' } }, '/repo')).toBe(1)
+    expect(spawnSync).toHaveBeenCalledWith('node', [], expect.objectContaining({
+      env: expect.objectContaining({ FORCE_COLOR: '0' }),
+    }))
   })
 })

@@ -13,6 +13,8 @@ export type CommandSpec = {
   env?: Record<string, string>
 }
 
+type CommandWithArgs = CommandSpec & { args: string[] }
+
 export function resolveCwd(rootDir: string, cwd?: string): string {
   if (!cwd) return rootDir
   return path.isAbsolute(cwd) ? cwd : path.join(rootDir, cwd)
@@ -22,7 +24,7 @@ export function formatCommand(command: string, args: string[] = []): string {
   return [command, ...args].map((arg) => (/[\s"]/u.test(arg) ? JSON.stringify(arg) : arg)).join(' ')
 }
 
-export function buildPackageManagerCommand(packageManager: string, args: string[]): CommandSpec {
+export function buildPackageManagerCommand(packageManager: string, args: string[]): CommandWithArgs {
   const npmExecPath = process.env.npm_execpath
 
   if (npmExecPath && packageManager === 'pnpm') {
@@ -35,7 +37,7 @@ export function buildPackageManagerCommand(packageManager: string, args: string[
   }
 }
 
-export function buildFreshPackageManagerCommand(packageManager: string, args: string[]): CommandSpec {
+export function buildFreshPackageManagerCommand(packageManager: string, args: string[]): CommandWithArgs {
   return {
     command: process.platform === 'win32' && packageManager === 'pnpm' ? 'pnpm.cmd' : packageManager,
     args,

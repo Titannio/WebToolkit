@@ -1,10 +1,11 @@
 #!/usr/bin/env node
 import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 import { loadConfig } from './config.js'
 import { runConfigReference } from './config-reference.js'
 import { runBundleAudit } from './bundle-audit.js'
-import { parseCleanArgs, printCleanHelp, runCleaner } from './cleaner.js'
+import { parseCleanArgs, runCleaner } from './cleaner.js'
 import { runDevGrid } from './dev-grid.js'
 import { runDevWatch } from './dev-watch.js'
 import { runEnvBootstrap, runEnvDoctor } from './environment.js'
@@ -93,7 +94,7 @@ function printEngineHelp(command: string): void {
     ],
     'dev-grid': [
       'Usage: webtoolkit dev-grid [--silent] [--dry-run]',
-      'Opens the configured Windows Terminal dev grid.',
+      'Opens the Windows Terminal grid or the configured fallback script.',
     ],
     'wait-service': [
       'Usage: webtoolkit wait-service [--url URL] [--name Name] [--timeout-ms N|never] [--interval-ms N] [--skip-ready-check]',
@@ -109,21 +110,21 @@ function printEngineHelp(command: string): void {
     ],
   }
 
-  for (const line of help[command] ?? [`No help available for ${command}.`]) {
+  for (const line of help[command]) {
     console.info(line)
   }
 }
 
-async function main(): Promise<void> {
-  const [command, ...args] = process.argv.slice(2)
+export async function main(rawArgs = process.argv.slice(2), cwd = process.cwd()): Promise<void> {
+  const [command, ...args] = rawArgs
 
   if (command === 'config') {
     runConfigReference(args)
     return
   }
 
-  const { config, configPath } = await loadConfig(process.cwd())
-  const workspaceRoot = configPath ? path.dirname(path.dirname(configPath)) : process.cwd()
+  const { config, configPath } = await loadConfig(cwd)
+  const workspaceRoot = configPath ? path.dirname(path.dirname(configPath)) : cwd
 
   if (!command || command === '--help' || command === '-h') {
     printHelp(listTaskCommands(config))
@@ -136,18 +137,13 @@ async function main(): Promise<void> {
     return
   }
 
-  if (command === 'clean-help') {
-    printCleanHelp()
-    return
-  }
-
   if (command === 'guard') {
     const [guardName, ...guardArgs] = args
     if (!guardName || hasHelp(args)) {
       printGuardHelp()
       return
     }
-    runBuiltinGuard(guardName, guardArgs, process.cwd())
+    runBuiltinGuard(guardName, guardArgs, cwd)
     return
   }
 
@@ -291,7 +287,11 @@ async function main(): Promise<void> {
   throw new Error(`Unknown command: ${command}`)
 }
 
-main().catch((error: unknown) => {
-  console.error((error as Error).message)
-  process.exit(1)
-})
+/* v8 ignore start -- executable adapter; main() is covered directly */
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  main().catch((error: unknown) => {
+    console.error((error as Error).message)
+    process.exit(1)
+  })
+}
+/* v8 ignore stop */

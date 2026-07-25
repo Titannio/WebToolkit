@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process'
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -77,7 +77,11 @@ describe('dev-grid runtime', () => {
     }), [])
 
     expect(processExit).toHaveBeenCalledWith(0)
-    expect(spawnCalls.some((entry) => entry.command === 'pnpm.cmd' && entry.args.join(' ') === 'run dev-grid')).toBe(true)
+    expect(spawnCalls).toContainEqual(expect.objectContaining({
+      command: 'pnpm.cmd',
+      args: ['run', 'dev-grid'],
+      options: expect.objectContaining({ env: expect.objectContaining({ FORCE_COLOR: '1' }) }),
+    }))
   })
 
   it('builds equal rows and equal columns from the configured layout', () => {
@@ -104,7 +108,13 @@ describe('dev-grid runtime', () => {
 
     const commands = spawnCalls.filter((entry) => entry.command === 'wt.exe').map((entry) => entry.args)
     expect(commands).toHaveLength(7)
-    expect(commands[0]).toEqual(expect.arrayContaining(['new-tab', '--title', 'Frontend 1']))
+    expect(commands[0]).toEqual(expect.arrayContaining([
+      'new-tab',
+      '--title',
+      'Frontend 1',
+      '-Command',
+      "$env:FORCE_COLOR = '1'; front-1",
+    ]))
     expect(commands[1]).toEqual(expect.arrayContaining(['split-pane', '--horizontal', '--size', '0.5', '--title', 'Backend']))
     expect(commands[2]).toEqual(expect.arrayContaining(['move-focus', 'first']))
     expect(commands[3]).toEqual(expect.arrayContaining(['split-pane', '--vertical', '--size', '0.75', '--title', 'Frontend 2']))
@@ -162,6 +172,27 @@ describe('dev-grid runtime', () => {
     })
   })
 
+  it('does not persist pane profiles during a Windows dry run', () => {
+    mockWindowsTerminal()
+    const localAppData = mkdtempSync(join(tmpdir(), 'webtoolkit-dev-grid-'))
+    temporaryDirectories.push(localAppData)
+    process.env.LOCALAPPDATA = localAppData
+    const stdout = vi.spyOn(process.stdout, 'write').mockImplementation(() => true)
+
+    runDevGrid(runtimeWithConfig('/repo', {
+      devGrid: {
+        layout: {
+          rows: [{ panes: [{ title: 'A', command: 'echo A', fontSize: 16 }] }],
+        },
+      },
+    }), ['--dry-run'])
+
+    const fragmentPath = join(localAppData, 'Microsoft', 'Windows Terminal', 'Fragments', 'WebToolkit.Cli', 'dev-grid.json')
+    expect(existsSync(fragmentPath)).toBe(false)
+    expect(stdout).toHaveBeenCalledWith(expect.stringContaining('WebToolkit Dev Grid'))
+    expect(spawnCalls.some((entry) => entry.command === 'wt.exe')).toBe(false)
+  })
+
   it('rejects empty layouts, empty rows, and invalid font sizes', () => {
     expect(() => runDevGrid(runtimeWithConfig('/repo', {
       devGrid: { layout: { rows: [] } },
@@ -176,5 +207,150 @@ describe('dev-grid runtime', () => {
         layout: { rows: [{ panes: [{ title: 'A', command: 'echo A', fontSize: 0 }] }] },
       },
     }), [])).toThrow('invalid fontSize 0')
+
+    expect(() => runDevGrid(runtimeWithConfig('/repo', {
+      devGrid: {
+        layout: { rows: [{ panes: [{ title: 'A', command: 'echo A', fontSize: 1.5 }] }] },
+      },
+    }), [])).toThrow('invalid fontSize 1.5')
+
+    expect(() => runDevGrid(runtimeWithConfig('/repo', {
+      devGrid: {
+        layout: { rows: [{ panes: [{ title: 'A', command: 'echo A', fontSize: -1 }] }] },
+      },
+    }), [])).toThrow('invalid fontSize -1')
+  })
+
+  it('uses silent pane commands and falls back to the regular command', () => {
+    mockWindowsTerminal()
+
+    runDevGrid(runtimeWithConfig('/repo', {
+      devGrid: {
+        layout: {
+          rows: [{
+            panes: [
+              { title: 'A', command: 'normal-a', silentCommand: 'silent-a' },
+              { title: 'B', command: 'normal-b' },
+            ],
+          }],
+        },
+      },
+    }), ['--silent'])
+
+    const commands = spawnCalls.filter((entry) => entry.command === 'wt.exe').flatMap((entry) => entry.args)
+    expect(commands).toContain("$env:FORCE_COLOR = '1'; silent-a")
+    expect(commands).toContain("$env:FORCE_COLOR = '1'; normal-b")
+  })
+
+  it('uses Windows PowerShell when pwsh is unavailable', () => {
+    mockWindowsTerminal()
+    vi.mocked(spawnSync).mockImplementation((command, args, options) => {
+      spawnCalls.push({ command: String(command), args: [...(args ?? [])], options })
+      if (command === 'where.exe' && args?.[0] === 'pwsh') return { status: 1 } as never
+      return { status: 0, stdout: '', stderr: '' } as never
+    })
+
+    runDevGrid(runtimeWithConfig('/repo', {
+      devGrid: { layout: { rows: [{ panes: [{ title: 'A', command: 'a' }] }] } },
+    }), [])
+
+    expect(spawnCalls.find((entry) => entry.command === 'wt.exe')?.args).toContain('powershell.exe')
+  })
+
+  it('requires LOCALAPPDATA only when a profile must be persisted', () => {
+    mockWindowsTerminal()
+    delete process.env.LOCALAPPDATA
+    expect(() => runDevGrid(runtimeWithConfig('/repo', {
+      devGrid: { layout: { rows: [{ panes: [{ title: 'A', command: 'a', fontSize: 12 }] }] } },
+    }), [])).toThrow('LOCALAPPDATA is not defined')
+  })
+
+  it('runs preflight and propagates its exit code', () => {
+    mockWindowsTerminal()
+    const processExit = vi.spyOn(process, 'exit').mockImplementation(() => undefined as never)
+    vi.mocked(runCommandInherited).mockReturnValue(3)
+
+    runDevGrid(runtimeWithConfig('/repo', {
+      devGrid: {
+        preflightCommand: { label: 'preflight', command: 'node', cwd: 'app', env: { A: '1' } },
+        layout: { rows: [{ panes: [{ title: 'A', command: 'a' }] }] },
+      },
+    }), [])
+
+    expect(runCommandInherited).toHaveBeenCalledWith({
+      command: 'node',
+      args: [],
+      cwd: 'app',
+      env: { A: '1' },
+    }, '/repo')
+    expect(processExit).toHaveBeenCalledWith(3)
+  })
+
+  it('rejects a preflight without a command', () => {
+    mockWindowsTerminal()
+    expect(() => runDevGrid(runtimeWithConfig('/repo', {
+      devGrid: {
+        preflightCommand: { label: 'preflight' } as never,
+        layout: { rows: [{ panes: [{ title: 'A', command: 'a' }] }] },
+      },
+    }), [])).toThrow('must define command')
+  })
+
+  it.each([
+    ['linux' as NodeJS.Platform, 'Windows Terminal grid is unavailable'],
+    ['win32' as NodeJS.Platform, 'Windows Terminal (`wt.exe`) is unavailable'],
+  ])('requires fallbackScript when the grid is unavailable on %s', (platform, message) => {
+    if (platform === 'win32') mockWindowsTerminal(false)
+    else vi.spyOn(process, 'platform', 'get').mockReturnValue(platform)
+    expect(() => runDevGrid(runtimeWithConfig('/repo', {
+      devGrid: { layout: { rows: [{ panes: [{ title: 'A', command: 'a' }] }] } },
+    }), [])).toThrow(message)
+  })
+
+  it('normalizes a bare fallback script and maps a null status to failure', () => {
+    vi.spyOn(process, 'platform', 'get').mockReturnValue('linux')
+    vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+    const processExit = vi.spyOn(process, 'exit').mockImplementation(() => undefined as never)
+    vi.mocked(spawnSync).mockReturnValue({ status: null } as never)
+
+    runDevGrid(runtimeWithConfig('/repo', {
+      packageManager: 'pnpm',
+      devGrid: {
+        fallbackScript: '  dev:grid   silent ',
+        layout: { rows: [{ panes: [{ title: 'A', command: 'a' }] }] },
+      },
+    }), [])
+
+    expect(spawnSync).toHaveBeenCalledWith('pnpm', ['run', 'dev:grid silent'], expect.any(Object))
+    expect(processExit).toHaveBeenCalledWith(1)
+  })
+
+  it('propagates fallback spawn errors', () => {
+    vi.spyOn(process, 'platform', 'get').mockReturnValue('linux')
+    vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+    vi.mocked(spawnSync).mockReturnValue({ error: new Error('spawn failed') } as never)
+    expect(() => runDevGrid(runtimeWithConfig('/repo', {
+      devGrid: {
+        fallbackScript: 'dev',
+        layout: { rows: [{ panes: [{ title: 'A', command: 'a' }] }] },
+      },
+    }), [])).toThrow('spawn failed')
+  })
+
+  it.each([
+    [{ error: new Error('wt spawn failed') }, 'wt spawn failed'],
+    [{ status: 1, stderr: 'stderr detail', stdout: '' }, 'stderr detail'],
+    [{ status: 1, stderr: '', stdout: 'stdout detail' }, 'stdout detail'],
+    [{ status: 1, stderr: '', stdout: '' }, 'exit code 1'],
+  ])('reports Windows Terminal failures: %j', (result, message) => {
+    mockWindowsTerminal()
+    vi.mocked(spawnSync).mockImplementation((command, args, options) => {
+      spawnCalls.push({ command: String(command), args: [...(args ?? [])], options })
+      if (command === 'where.exe') return { status: 0 } as never
+      return result as never
+    })
+    expect(() => runDevGrid(runtimeWithConfig('/repo', {
+      devGrid: { layout: { rows: [{ panes: [{ title: 'A', command: 'a' }] }] } },
+    }), [])).toThrow(message)
   })
 })

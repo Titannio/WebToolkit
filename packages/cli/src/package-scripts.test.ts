@@ -11,9 +11,11 @@ describe('package scripts', () => {
       scripts: Record<string, string>
     }
 
-    expect(packageJson.scripts.verify).toBe('npm run type-check && npm run test:coverage && npm run build && npm run npm:pack')
+    expect(packageJson.scripts.verify).toBe('npm run type-check && npm run test:coverage && npm run npm:pack')
     expect(packageJson.scripts['release:check']).toBe('npm run verify')
-    expect(packageJson.scripts.prepublishOnly).toBe('npm run verify')
+    expect(packageJson.scripts.prepack).toBe('npm run build')
+    expect(packageJson.scripts.prepublishOnly).toBe('npm run type-check && npm run test:coverage')
+    expect(packageJson.scripts['test:watch']).toBe('vitest')
     expect(packageJson.scripts['deps:update']).toBe('npm update')
     expect(packageJson.scripts['npm:update']).toBeUndefined()
   })

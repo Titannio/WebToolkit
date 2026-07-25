@@ -5,7 +5,7 @@ import { createInterface } from 'node:readline/promises'
 import { stdin as input, stdout as output } from 'node:process'
 
 import type { TaskStepConfig, WebToolkitCliConfig } from './config.js'
-import { prepareCorepackPnpm } from './environment.js'
+import { assertExactPnpmVersion, prepareCorepackPnpm } from './environment.js'
 import { buildFreshPackageManagerCommand, buildPackageManagerCommand, CommandResult, formatCommand, runCommandBuffered, runCommandInherited } from './process.js'
 
 type Runtime = {
@@ -79,25 +79,19 @@ function normalizeVersionSpec(version: string): string {
   return version.replace(/^[~^]/u, '')
 }
 
-function validatePinnedPnpmVersion(version: string): void {
-  if (!version || version.includes(' ') || version === 'latest' || version === '11') {
-    throw new Error(`packageManager must pin an exact pnpm version, but found ${JSON.stringify(`pnpm@${version}`)}.`)
-  }
-}
-
-function parsePnpmPackageManagerVersion(packageManager: unknown): string | null {
+export function parsePnpmPackageManagerVersion(packageManager: unknown): string | null {
   if (typeof packageManager !== 'string' || !packageManager.startsWith('pnpm@')) return null
   const version = packageManager.slice('pnpm@'.length).trim()
-  validatePinnedPnpmVersion(version)
+  assertExactPnpmVersion(version)
   return version
 }
 
-function getVersionMajor(versionSpec: string): number | null {
+export function getVersionMajor(versionSpec: string): number | null {
   const matched = normalizeVersionSpec(versionSpec).match(/^(\d+)/u)
   return matched ? Number.parseInt(matched[1], 10) : null
 }
 
-function shouldIncludeOutdatedTarget(currentVersion: string, latestVersion: string, target: TargetMode): boolean {
+export function shouldIncludeOutdatedTarget(currentVersion: string, latestVersion: string, target: TargetMode): boolean {
   if (!currentVersion || !latestVersion || currentVersion === latestVersion) return false
   if (target === 'latest') return true
 
@@ -106,13 +100,13 @@ function shouldIncludeOutdatedTarget(currentVersion: string, latestVersion: stri
   return currentMajor !== null && latestMajor !== null && currentMajor === latestMajor
 }
 
-function applyManifestVersionStyle(currentVersion: string | undefined, targetVersion: string): string {
+export function applyManifestVersionStyle(currentVersion: string | undefined, targetVersion: string): string {
   if (currentVersion?.startsWith('^')) return `^${normalizeVersionSpec(targetVersion)}`
   if (currentVersion?.startsWith('~')) return `~${normalizeVersionSpec(targetVersion)}`
   return normalizeVersionSpec(targetVersion)
 }
 
-function unquoteYamlScalar(value: string): string {
+export function unquoteYamlScalar(value: string): string {
   const trimmed = value.trim()
   if ((trimmed.startsWith("'") && trimmed.endsWith("'")) || (trimmed.startsWith('"') && trimmed.endsWith('"'))) {
     return trimmed.slice(1, -1)
@@ -141,7 +135,7 @@ function mergeWorkspaceUpdates(...sources: WorkspaceUpdates[]): WorkspaceUpdates
   return sortUpdatesByFile(merged)
 }
 
-function normalizeNcuJson(raw: string): WorkspaceUpdates {
+export function normalizeNcuJson(raw: string): WorkspaceUpdates {
   const trimmed = raw.trim()
   if (!trimmed) return {}
 
@@ -163,7 +157,7 @@ function normalizeNcuJson(raw: string): WorkspaceUpdates {
   ) as WorkspaceUpdates)
 }
 
-function parseJsonObjectFromCommandOutput(raw: string): Record<string, unknown> {
+export function parseJsonObjectFromCommandOutput(raw: string): Record<string, unknown> {
   const start = raw.indexOf('{')
   if (start === -1) throw new Error('No JSON object found.')
 
@@ -203,14 +197,14 @@ function parseJsonObjectFromCommandOutput(raw: string): Record<string, unknown> 
   throw new Error('Unterminated JSON object.')
 }
 
-function toWorkspaceManifestPath(location: string, workspaceRoot: string): string | null {
+export function toWorkspaceManifestPath(location: string, workspaceRoot: string): string | null {
   const relativeLocation = path.relative(workspaceRoot, location)
   if (relativeLocation.startsWith('..') || path.isAbsolute(relativeLocation)) return null
   const normalizedLocation = relativeLocation.replace(/\\/gu, '/')
   return normalizedLocation ? `${normalizedLocation}/package.json` : 'package.json'
 }
 
-function normalizePnpmOutdatedJson(raw: string, workspaceRoot: string, target: TargetMode): WorkspaceUpdates {
+export function normalizePnpmOutdatedJson(raw: string, workspaceRoot: string, target: TargetMode): WorkspaceUpdates {
   const trimmed = raw.trim()
   if (!trimmed) return {}
 
@@ -247,7 +241,7 @@ function normalizePnpmOutdatedJson(raw: string, workspaceRoot: string, target: T
   return sortUpdatesByFile(updatesByFile)
 }
 
-async function readManifestVersions(filePath: string): Promise<ManifestVersionMap> {
+export async function readManifestVersions(filePath: string): Promise<ManifestVersionMap> {
   const manifest = JSON.parse(await readFile(filePath, 'utf8')) as Record<string, unknown>
   const versions: ManifestVersionMap = {}
 
@@ -322,7 +316,7 @@ function filterWorkspaceUpdatesByPackageNames(updatesByFile: WorkspaceUpdates, p
   ) as WorkspaceUpdates)
 }
 
-function subtractWorkspaceUpdates(minuend: WorkspaceUpdates, subtrahend: WorkspaceUpdates): WorkspaceUpdates {
+export function subtractWorkspaceUpdates(minuend: WorkspaceUpdates, subtrahend: WorkspaceUpdates): WorkspaceUpdates {
   return sortUpdatesByFile(Object.fromEntries(
     Object.entries(minuend)
       .map(([filePath, updates]) => [
@@ -335,7 +329,7 @@ function subtractWorkspaceUpdates(minuend: WorkspaceUpdates, subtrahend: Workspa
   ) as WorkspaceUpdates)
 }
 
-function addSkippedEntries(target: Map<string, SkippedUpgradeEntry>, entries: SkippedUpgradeEntry[]): void {
+export function addSkippedEntries(target: Map<string, SkippedUpgradeEntry>, entries: SkippedUpgradeEntry[]): void {
   for (const entry of entries) {
     const key = getUpgradeEntryKey(entry.filePath, entry.packageName)
     const existing = target.get(key)
@@ -345,7 +339,7 @@ function addSkippedEntries(target: Map<string, SkippedUpgradeEntry>, entries: Sk
   }
 }
 
-function readProtectedOverrides(rootDir: string, relativeFilePath: string): Record<string, string> {
+export function readProtectedOverrides(rootDir: string, relativeFilePath: string): Record<string, string> {
   const filePath = path.join(rootDir, relativeFilePath)
   if (!existsSync(filePath)) return {}
 
@@ -369,14 +363,13 @@ function readProtectedOverrides(rootDir: string, relativeFilePath: string): Reco
   return overrides
 }
 
-async function updateProtectedOverrides(rootDir: string, relativeFilePath: string, overrideUpdates: Record<string, string>): Promise<void> {
+export async function updateProtectedOverrides(rootDir: string, relativeFilePath: string, overrideUpdates: Record<string, string>): Promise<void> {
   if (Object.keys(overrideUpdates).length === 0) return
 
   const filePath = path.join(rootDir, relativeFilePath)
   const lines = (await readFile(filePath, 'utf8')).split(/\r?\n/u)
   const remainingPackages = new Set(Object.keys(overrideUpdates))
   let insideOverrides = false
-  let modified = false
 
   for (let index = 0; index < lines.length; index += 1) {
     const line = lines[index]
@@ -396,14 +389,13 @@ async function updateProtectedOverrides(rootDir: string, relativeFilePath: strin
 
     lines[index] = `${match[1]}${match[2]}: ${targetVersion}`
     remainingPackages.delete(packageName)
-    modified = true
   }
 
   if (remainingPackages.size > 0) {
     throw new Error(`Unable to update protected override(s): ${Array.from(remainingPackages).join(', ')}`)
   }
 
-  if (modified) await writeFile(filePath, lines.join('\n'))
+  await writeFile(filePath, lines.join('\n'))
 }
 
 function getProtectedDependencyNames(runtime: Runtime): string[] {
@@ -418,7 +410,7 @@ async function runBufferedPm(runtime: Runtime, args: string[], rejectOnNonZero =
   const command = buildPackageManagerCommand(runtime.config.packageManager, args)
   const result = await runCommandBuffered(command, runtime.cwd)
   if (rejectOnNonZero && result.code !== 0) {
-    throw new Error(`Command failed: ${formatCommand(command.command, command.args ?? [])}\n${result.output}`)
+    throw new Error(`Command failed: ${formatCommand(command.command, command.args)}\n${result.output}`)
   }
   return result
 }
@@ -431,7 +423,7 @@ function runInheritedPm(
   const command = buildCommand(runtime.config.packageManager, args)
   const code = runCommandInherited(command, runtime.cwd)
   if (code !== 0) {
-    throw new Error(`Command failed: ${formatCommand(command.command, command.args ?? [])}`)
+    throw new Error(`Command failed: ${formatCommand(command.command, command.args)}`)
   }
 }
 
@@ -500,13 +492,13 @@ async function collectProtectedHoldUpdates(runtime: Runtime, target: TargetMode,
   ) as WorkspaceUpdates)
 }
 
-function deriveProtectedOverrideTargetVersion(currentOverride: string | null, normalizedTargetVersion: string): string {
+export function deriveProtectedOverrideTargetVersion(currentOverride: string | null, normalizedTargetVersion: string): string {
   if (currentOverride?.startsWith('^')) return `^${normalizedTargetVersion}`
   if (currentOverride?.startsWith('~')) return `~${normalizedTargetVersion}`
   return normalizedTargetVersion
 }
 
-function buildProtectedUpgradePlans(runtime: Runtime, entries: UpgradeEntry[]): ProtectedUpgradePlan[] {
+export function buildProtectedUpgradePlans(runtime: Runtime, entries: UpgradeEntry[]): ProtectedUpgradePlan[] {
   const currentOverrides = readProtectedOverrides(runtime.cwd, runtime.config.upgrade?.protectedOverridesFile ?? 'pnpm-workspace.yaml')
   const hints = runtime.config.upgrade?.protectedDependencyUpstreamHints ?? {}
   const normalizedTargetsByPackage = new Map<string, Set<string>>()
@@ -534,7 +526,7 @@ function buildProtectedUpgradePlans(runtime: Runtime, entries: UpgradeEntry[]): 
     .sort((left, right) => left.packageName.localeCompare(right.packageName))
 }
 
-async function getReleaseDate(runtime: Runtime, packageName: string, version: string): Promise<Date | null> {
+export async function getReleaseDate(runtime: Runtime, packageName: string, version: string): Promise<Date | null> {
   const command = process.platform === 'win32' ? 'npm.cmd' : 'npm'
   const result = await runCommandBuffered({ command, args: ['view', packageName, 'time', '--json'] }, runtime.cwd)
 
@@ -636,7 +628,7 @@ async function preparePackageManagerAfterManifestUpdates(runtime: Runtime, previ
   return true
 }
 
-function runConfiguredStep(runtime: Runtime, step: TaskStepConfig): void {
+export function runConfiguredStep(runtime: Runtime, step: TaskStepConfig): void {
   if (!step.command) {
     throw new Error(`Configured upgrade step "${step.label}" must define command.`)
   }
@@ -651,7 +643,7 @@ function runConfiguredStep(runtime: Runtime, step: TaskStepConfig): void {
   if (code !== 0) process.exit(code)
 }
 
-function parseCliArgs(runtime: Runtime, rawArgs: string[]): UpgradeOptions {
+export function parseCliArgs(runtime: Runtime, rawArgs: string[]): UpgradeOptions {
   const verbose = rawArgs.includes('--verbose')
   const daysArg = rawArgs.find((arg) => arg.startsWith('--days='))
   const defaultDays = runtime.config.upgrade?.defaultCooldownDays ?? 7
@@ -687,7 +679,7 @@ async function promptYesNo(prompt: ReturnType<typeof createInterface>, question:
   }
 }
 
-async function resolveOptions(runtime: Runtime, rawArgs: string[]): Promise<UpgradeOptions> {
+export async function resolveOptions(runtime: Runtime, rawArgs: string[]): Promise<UpgradeOptions> {
   const cliOptions = parseCliArgs(runtime, rawArgs)
   if (rawArgs.includes('--yes') || !input.isTTY || !output.isTTY) return cliOptions
 

@@ -127,7 +127,7 @@ async function cleanupEmptyDirectories(
 
   if (entries.length === 0) {
     if (protectedRoot) return false
-    removals.push({ kind: 'empty-dir', relPath: relFromRoot || path.basename(dir) })
+    removals.push({ kind: 'empty-dir', relPath: relFromRoot })
     if (!options.dryRun) await fs.rmdir(dir)
     return true
   }
@@ -143,7 +143,8 @@ async function cleanupEmptyDirectories(
   const remaining = await readDirSafe(dir)
   if (remaining.length === 0) {
     if (protectedRoot) return false
-    removals.push({ kind: 'empty-dir', relPath: relFromRoot || path.basename(dir) })
+    removals.push({ kind: 'empty-dir', relPath: relFromRoot })
+    /* v8 ignore else -- dry-run preserves child entries, so recursive cleanup cannot empty a parent */
     if (!options.dryRun) await fs.rmdir(dir)
     return true
   }

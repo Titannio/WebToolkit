@@ -1,6 +1,7 @@
 import { spawnSync } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
+import semver from 'semver'
 
 import type { WebToolkitCliConfig } from './config.js'
 
@@ -24,10 +25,14 @@ export function readRequiredPnpmVersion(repoRoot: string): string {
   const packageManager = String(packageJson.packageManager || '')
   if (!packageManager.startsWith('pnpm@')) throw new Error(`Expected packageManager to start with pnpm@ but found ${JSON.stringify(packageManager)}.`)
   const version = packageManager.slice('pnpm@'.length).trim()
-  if (!version || version.includes(' ') || version === 'latest' || version === '11') {
-    throw new Error(`packageManager must pin an exact pnpm version, but found ${JSON.stringify(packageManager)}.`)
-  }
+  assertExactPnpmVersion(version)
   return version
+}
+
+export function assertExactPnpmVersion(version: string): void {
+  if (semver.valid(version) === null) {
+    throw new Error(`packageManager must pin an exact pnpm version, but found ${JSON.stringify(`pnpm@${version}`)}.`)
+  }
 }
 
 function resolveNodeSiblingBinary(baseName: string): string {
@@ -82,8 +87,12 @@ function walkRepo(currentDir: string, onFile: (filePath: string) => void): void 
   for (const entry of fs.readdirSync(currentDir, { withFileTypes: true })) {
     if (['.git', 'node_modules', '.pnpm-store', '.turbo', 'dist'].includes(entry.name)) continue
     const entryPath = path.join(currentDir, entry.name)
-    if (entry.isDirectory()) walkRepo(entryPath, onFile)
-    else if (entry.isFile()) onFile(entryPath)
+    if (entry.isDirectory()) {
+      walkRepo(entryPath, onFile)
+      continue
+    }
+    /* v8 ignore else -- symlinks and other non-file entries are intentionally ignored */
+    if (entry.isFile()) onFile(entryPath)
   }
 }
 
@@ -92,9 +101,7 @@ function readTrimmedFile(filePath: string): string {
 }
 
 export function prepareCorepackPnpm(runtime: Runtime, repoRoot: string, version: string): void {
-  if (!version || version.includes(' ') || version === 'latest' || version === '11') {
-    throw new Error(`packageManager must pin an exact pnpm version, but found ${JSON.stringify(`pnpm@${version}`)}.`)
-  }
+  assertExactPnpmVersion(version)
 
   const corepack = resolveNodeSiblingBinary('corepack')
   runCommand(corepack, ['enable'], repoRoot, runtime)

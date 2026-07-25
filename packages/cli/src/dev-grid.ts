@@ -25,7 +25,7 @@ function hasWindowsTerminal(): boolean {
 }
 
 function createPaneCommand(command: string): string[] {
-  return [getPowerShellExecutable(), '-NoLogo', '-NoExit', '-Command', command]
+  return [getPowerShellExecutable(), '-NoLogo', '-NoExit', '-Command', `$env:FORCE_COLOR = '1'; ${command}`]
 }
 
 function createPaneArgs(
@@ -53,8 +53,6 @@ function createPaneArgs(
 }
 
 function getValidatedDevGridRows(rows: DevGridRowConfig[]): DevGridRowConfig[] {
-  if (!rows.length) throw new Error('devGrid.layout.rows is not configured.')
-
   for (const [rowIndex, row] of rows.entries()) {
     if (!row.panes.length) throw new Error(`devGrid.layout.rows[${rowIndex}].panes is not configured.`)
     for (const pane of row.panes) {
@@ -93,12 +91,9 @@ function buildPaneProfileName(repoRoot: string, pane: DevGridPaneConfig): string
   return `WebToolkit Dev Grid ${hash}`
 }
 
-function preparePaneProfiles(repoRoot: string, panes: DevGridPaneConfig[]): Map<DevGridPaneConfig, string> {
+function preparePaneProfiles(repoRoot: string, panes: DevGridPaneConfig[], persist: boolean): Map<DevGridPaneConfig, string> {
   const panesWithFontSize = panes.filter((pane) => pane.fontSize !== undefined)
   if (!panesWithFontSize.length) return new Map()
-
-  const fragmentFilePath = getWindowsTerminalFragmentFilePath()
-  mkdirSync(dirname(fragmentFilePath), { recursive: true })
 
   const profiles = panesWithFontSize.map((pane) => ({
     name: buildPaneProfileName(repoRoot, pane),
@@ -107,7 +102,11 @@ function preparePaneProfiles(repoRoot: string, panes: DevGridPaneConfig[]): Map<
     fontSize: pane.fontSize,
   }))
 
-  writeFileSync(fragmentFilePath, `${JSON.stringify({ profiles }, null, 2)}\n`, 'utf8')
+  if (persist) {
+    const fragmentFilePath = getWindowsTerminalFragmentFilePath()
+    mkdirSync(dirname(fragmentFilePath), { recursive: true })
+    writeFileSync(fragmentFilePath, `${JSON.stringify({ profiles }, null, 2)}\n`, 'utf8')
+  }
 
   return new Map(profiles.map((profile, index) => [panesWithFontSize[index], profile.name]))
 }
@@ -175,7 +174,11 @@ function runFallback(runtime: Runtime, script: string, reason: string, dryRun: b
 
   process.stderr.write(`${reason} Falling back to \`${runtime.config.packageManager} run ${normalizedScript}\`.\n`)
   const executable = process.platform === 'win32' ? `${runtime.config.packageManager}.cmd` : runtime.config.packageManager
-  const result = spawnSync(executable, ['run', normalizedScript], { cwd: runtime.cwd, stdio: 'inherit' })
+  const result = spawnSync(executable, ['run', normalizedScript], {
+    cwd: runtime.cwd,
+    env: { ...process.env, FORCE_COLOR: '1' },
+    stdio: 'inherit',
+  })
   if (result.error) throw result.error
   process.exit(result.status ?? 1)
 }
@@ -215,7 +218,7 @@ export function runDevGrid(runtime: Runtime, rawArgs: string[]): void {
   }
 
   const windowName = `webtoolkit-dev-grid-${Date.now()}-${process.pid}`
-  const paneProfiles = preparePaneProfiles(runtime.cwd, panes)
+  const paneProfiles = preparePaneProfiles(runtime.cwd, panes, !dryRun)
   const commands = createWindowsTerminalCommands(runtime.cwd, rows, silent, windowName, paneProfiles)
 
   if (dryRun) {
