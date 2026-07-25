@@ -2,7 +2,7 @@ import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { extname, join, relative, resolve } from 'node:path'
 import { brotliCompressSync, gzipSync } from 'node:zlib'
 
-import type { WebToolkitCliConfig } from './config.js'
+import type { BundleBudgetConfig, WebToolkitCliConfig } from './config.js'
 
 type Runtime = {
   cwd: string
@@ -23,6 +23,10 @@ type AppBundleStats = {
   statsHtmlPath: string
   statsHtmlExists: boolean
   assets: BundleAsset[]
+}
+
+type CompiledBundleBudget = BundleBudgetConfig & {
+  matcher: RegExp
 }
 
 const colors = {
@@ -85,6 +89,20 @@ function collectBundleAssets(rootDir: string, appDirs: string[]): AppBundleStats
   })
 }
 
+function compileBundleBudgets(appDirs: string[], budgets: BundleBudgetConfig[]): CompiledBundleBudget[] {
+  const configuredApps = new Set(appDirs)
+  return budgets.map((budget) => {
+    if (!configuredApps.has(budget.appDir)) {
+      throw new Error(`Bundle budget "${budget.label}" references appDir "${budget.appDir}" outside bundleAudit.appDirs.`)
+    }
+
+    return {
+      ...budget,
+      matcher: new RegExp(budget.pattern, 'u'),
+    }
+  })
+}
+
 export function runBundleAudit(runtime: Runtime, rawArgs: string[]): void {
   const config = runtime.config.bundleAudit
   if (!config?.appDirs?.length) {
@@ -106,6 +124,7 @@ export function runBundleAudit(runtime: Runtime, rawArgs: string[]): void {
   const rootDir = resolve(args.get('root') ?? runtime.cwd)
   const top = Number(args.get('top') ?? String(config.top ?? 20))
   const rawWarningBytes = config.rawWarningBytes ?? 1_000_000
+  const budgets = compileBundleBudgets(config.appDirs, config.budgets ?? [])
   const stats = collectBundleAssets(rootDir, config.appDirs)
   const allAssets = stats.flatMap((entry) => entry.assets).sort(compareAssetsByRawSizeDesc)
 
@@ -144,4 +163,37 @@ export function runBundleAudit(runtime: Runtime, rawArgs: string[]): void {
   const warnedCount = allAssets.filter((asset) => asset.rawBytes >= rawWarningBytes).length
   console.info('')
   console.info(colorize(`Warning threshold: ${formatBytes(rawWarningBytes)} raw. Flagged assets: ${warnedCount}.`, warnedCount > 0 ? colors.yellow : colors.green))
+
+  if (budgets.length === 0) return
+
+  let hasBudgetFailure = false
+  console.info('')
+  console.info(colorize('Bundle budgets:', colors.bright))
+  for (const budget of budgets) {
+    const appAssets = stats.find((entry) => entry.app === budget.appDir)!.assets
+    const matches = appAssets.filter((asset) => budget.matcher.test(asset.file))
+
+    if (matches.length === 0) {
+      const required = budget.required ?? true
+      const status = required ? 'MISSING' : 'SKIP'
+      console.info(colorize(
+        `- ${status} ${budget.appDir} ${budget.label}: no asset matched ${budget.pattern}`,
+        required ? colors.red : colors.yellow,
+      ))
+      if (required) hasBudgetFailure = true
+      continue
+    }
+
+    for (const asset of matches) {
+      const passed = asset.rawBytes <= budget.maxRawBytes
+      const status = passed ? 'PASS' : 'FAIL'
+      console.info(colorize(
+        `- ${status} ${budget.appDir} ${budget.label}: ${asset.file} ${formatBytes(asset.rawBytes)} <= ${formatBytes(budget.maxRawBytes)}`,
+        passed ? colors.green : colors.red,
+      ))
+      if (!passed) hasBudgetFailure = true
+    }
+  }
+
+  if (hasBudgetFailure) process.exitCode = 1
 }

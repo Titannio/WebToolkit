@@ -32,7 +32,7 @@ function printHelp(taskNames: string[] = []): void {
   console.info('  validate                      Run the configured validation task.')
   console.info('  jsdoc-report                  Run the configured JSDoc report task.')
   console.info('  upgrade                       Run the configured upgrade task.')
-  console.info('  performance-bundle-audit      Run the configured bundle audit task.')
+  console.info('  performance-bundle-audit      Report bundle sizes and enforce configured budgets.')
   console.info('  dev-watch                     Run configured dev app watcher.')
   console.info('  dev-grid                      Open configured dev terminal grid.')
   console.info('  wait-service                  Wait for a service readiness endpoint.')

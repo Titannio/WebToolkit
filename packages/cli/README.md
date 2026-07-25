@@ -118,7 +118,7 @@ Top-level fields:
 - `releaseGate`: named critical stages used by `webtoolkit release-gate`.
 - `validate`: ordered validation steps used by `webtoolkit validate`.
 - `jsdocReport`: paths and rules used by `webtoolkit jsdoc-report`.
-- `bundleAudit`: frontend build directories used by `webtoolkit performance-bundle-audit`.
+- `bundleAudit`: frontend build directories, diagnostic thresholds, and blocking asset budgets used by `webtoolkit performance-bundle-audit`.
 - `upgrade`: dependency upgrade policy used by `webtoolkit upgrade`.
 - `devWatch`: dev app ports and package filters used by `webtoolkit dev-watch`.
 - `devGrid`: terminal row layout used by `webtoolkit dev-grid`.
@@ -542,7 +542,16 @@ JSDoc, bundle audit, and upgrade engines:
   "bundleAudit": {
     "appDirs": ["apps/frontend"],
     "top": 20,
-    "rawWarningBytes": 1000000
+    "rawWarningBytes": 1000000,
+    "budgets": [
+      {
+        "appDir": "apps/frontend",
+        "label": "main bundle",
+        "pattern": "^index-.*\\.js$",
+        "maxRawBytes": 500000,
+        "required": true
+      }
+    ]
   },
   "upgrade": {
     "defaultCooldownDays": 7,

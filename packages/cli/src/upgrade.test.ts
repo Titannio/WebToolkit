@@ -80,6 +80,81 @@ describe('upgrade prompts', () => {
 })
 
 describe('upgrade cooldown', () => {
+  it('ignores GitHub Actions reported by pnpm outdated', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-06-17T12:00:00.000Z'))
+    const infoLines: string[] = []
+    vi.spyOn(console, 'info').mockImplementation((message?: unknown) => {
+      infoLines.push(String(message ?? ''))
+      return undefined
+    })
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    vi.spyOn(process.stdout, 'write').mockImplementation(() => true)
+
+    const root = await createTempRoot()
+    await writeFile(path.join(root, 'pnpm-workspace.yaml'), ['packages:', '  - "."', ''].join('\n'))
+    await writeFile(path.join(root, 'package.json'), JSON.stringify({
+      dependencies: {
+        'stable-dep': '^1.0.0',
+      },
+    }))
+
+    processMocks.runCommandBuffered.mockImplementation(async (spec: CommandSpec) => {
+      const args = spec.args ?? []
+
+      if (args.includes('outdated')) {
+        return bufferedResult(JSON.stringify({
+          'stable-dep': {
+            current: '1.0.0',
+            latest: '1.2.0',
+            dependencyType: 'dependencies',
+            dependentPackages: [{ location: root }],
+          },
+          'actions/cache': {
+            current: '4.3.0',
+            latest: '6.1.0',
+            dependencyType: 'githubAction',
+            dependentPackages: [{ location: root }],
+          },
+        }), 1)
+      }
+
+      if (args.includes('ncu') && args.includes('--jsonUpgraded')) {
+        return bufferedResult(JSON.stringify({ 'package.json': { 'stable-dep': '^1.2.0' } }))
+      }
+
+      if (args.includes('view')) {
+        const packageName = args[args.indexOf('view') + 1]
+        if (packageName !== 'stable-dep') throw new Error(`Unexpected release metadata request: ${packageName}`)
+        return bufferedResult(JSON.stringify({
+          '1.2.0': '2026-05-01T12:00:00.000Z',
+        }))
+      }
+
+      throw new Error(`Unexpected buffered command: ${spec.command} ${(spec.args ?? []).join(' ')}`)
+    })
+    processMocks.runCommandInherited.mockImplementation((spec: CommandSpec) => {
+      const args = spec.args ?? []
+      if (args.includes('ncu') && args.includes('-u')) return 0
+      if (args.includes('install')) return 0
+      throw new Error(`Unexpected inherited command: ${spec.command} ${args.join(' ')}`)
+    })
+
+    await runUpgradeEngine({
+      cwd: root,
+      config: mergeConfig({
+        upgrade: {
+          defaultCooldownDays: 7,
+          protectedOverridesFile: 'pnpm-workspace.yaml',
+        },
+      }),
+    }, ['--yes'])
+
+    const output = stripAnsi(infoLines.join('\n'))
+    expect(output).toContain('stable-dep: ^1.0.0 -> ^1.2.0')
+    expect(output).not.toContain('actions/cache')
+  })
+
   it('fails closed when cooldown metadata cannot be read', async () => {
     vi.spyOn(console, 'info').mockImplementation(() => undefined)
     vi.spyOn(console, 'warn').mockImplementation(() => undefined)

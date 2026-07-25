@@ -124,6 +124,16 @@ describe('config reference', () => {
       workspaceTests: {
         workspaces: [{ name: 'Web', package: '@acme/web', path: 'apps/web' }],
       },
+      bundleAudit: {
+        appDirs: ['apps/web'],
+        budgets: [{
+          appDir: 'apps/web',
+          label: 'main bundle',
+          pattern: '^index-.*\\.js$',
+          maxRawBytes: 500_000,
+          required: true,
+        }],
+      },
     })).not.toThrow()
   })
 
@@ -220,6 +230,12 @@ describe('config reference', () => {
     }
     expect(() => validateConfig({
       guards: { internalLink: { includePaths: ['src'], excludePatterns: ['['] } },
+    })).toThrow('must be a valid regular expression')
+    expect(() => validateConfig({
+      bundleAudit: {
+        appDirs: ['apps/web'],
+        budgets: [{ appDir: 'apps/web', label: 'main', pattern: '[', maxRawBytes: 10 }],
+      },
     })).toThrow('must be a valid regular expression')
     expect(() => validateConfig({
       guards: {

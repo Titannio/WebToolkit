@@ -216,12 +216,15 @@ function normalizePnpmOutdatedJson(raw: string, workspaceRoot: string, target: T
 
   const parsed = JSON.parse(trimmed) as Record<string, {
     current?: unknown
+    dependencyType?: unknown
     latest?: unknown
     dependentPackages?: unknown
   }>
   const updatesByFile: WorkspaceUpdates = {}
 
   for (const [packageName, packageInfo] of Object.entries(parsed)) {
+    if (packageInfo.dependencyType === 'githubAction') continue
+
     const currentVersion = typeof packageInfo.current === 'string' ? packageInfo.current : null
     const latestVersion = typeof packageInfo.latest === 'string' ? packageInfo.latest : null
     if (!currentVersion || !latestVersion || !shouldIncludeOutdatedTarget(currentVersion, latestVersion, target)) continue

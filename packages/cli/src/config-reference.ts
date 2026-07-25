@@ -584,6 +584,22 @@ export const configSchema: JsonSchema = {
         appDirs: projectPaths('Frontend app directories containing dist/assets.'),
         top: { type: 'integer', minimum: 1 },
         rawWarningBytes: { type: 'integer', minimum: 0 },
+        budgets: {
+          type: 'array',
+          description: 'Per-asset raw-size budgets evaluated after the diagnostic report.',
+          items: {
+            type: 'object',
+            required: ['appDir', 'label', 'pattern', 'maxRawBytes'],
+            additionalProperties: false,
+            properties: {
+              appDir: projectPath('Frontend app directory declared in bundleAudit.appDirs.'),
+              label: { type: 'string', minLength: 1 },
+              pattern: { type: 'string', minLength: 1, format: 'regex' },
+              maxRawBytes: { type: 'integer', minimum: 0 },
+              required: { type: 'boolean', default: true },
+            },
+          },
+        },
       },
     },
     upgrade: {

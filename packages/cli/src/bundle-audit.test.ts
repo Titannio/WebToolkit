@@ -59,14 +59,70 @@ describe('bundle audit', () => {
         appDirs: ['apps/webapp'],
         top: 5,
         rawWarningBytes: 10,
+        budgets: [{
+          appDir: 'apps/webapp',
+          label: 'large bundle',
+          pattern: '^index\\.very-large\\.js$',
+          maxRawBytes: 20,
+        }],
       },
     }), ['--root', temp])
 
     expect(logs.some((line) => line.includes('Top 2 assets by raw size'))).toBe(true)
     expect(logs.some((line) => line.includes('!'))).toBe(true)
+    expect(logs.some((line) => line.includes('PASS apps/webapp large bundle'))).toBe(true)
 
     await rm(temp, { recursive: true, force: true })
     spy.mockRestore()
+  })
+
+  it('reports passing, failing, required, and optional bundle budgets', async () => {
+    const temp = await mkdtemp(path.join(os.tmpdir(), 'webtoolkit-bundle-audit-budgets-'))
+    const dist = path.join(temp, 'apps', 'webapp', 'dist', 'assets')
+    await mkdir(dist, { recursive: true })
+    await writeFile(path.join(dist, 'large.js'), 'x'.repeat(20), 'utf8')
+    await writeFile(path.join(dist, 'small.css'), 'x'.repeat(5), 'utf8')
+
+    vi.spyOn(console, 'info').mockImplementation((message?: unknown) => {
+      logs.push(String(message))
+    })
+
+    runBundleAudit(runtimeWithConfig(temp, {
+      packageManager: 'pnpm',
+      bundleAudit: {
+        appDirs: ['apps/webapp'],
+        budgets: [
+          { appDir: 'apps/webapp', label: 'large', pattern: '^large\\.js$', maxRawBytes: 20 },
+          { appDir: 'apps/webapp', label: 'small', pattern: '^small\\.css$', maxRawBytes: 4 },
+          { appDir: 'apps/webapp', label: 'required', pattern: '^required\\.js$', maxRawBytes: 10 },
+          { appDir: 'apps/webapp', label: 'optional', pattern: '^optional\\.js$', maxRawBytes: 10, required: false },
+        ],
+      },
+    }), [])
+
+    expect(logs.some((line) => line.includes('Bundle budgets:'))).toBe(true)
+    expect(logs.some((line) => line.includes('PASS apps/webapp large'))).toBe(true)
+    expect(logs.some((line) => line.includes('FAIL apps/webapp small'))).toBe(true)
+    expect(logs.some((line) => line.includes('MISSING apps/webapp required'))).toBe(true)
+    expect(logs.some((line) => line.includes('SKIP apps/webapp optional'))).toBe(true)
+    expect(process.exitCode).toBe(1)
+
+    await rm(temp, { recursive: true, force: true })
+  })
+
+  it('rejects bundle budgets for apps outside the audit scope', () => {
+    expect(() => runBundleAudit(runtimeWithConfig('/tmp', {
+      packageManager: 'pnpm',
+      bundleAudit: {
+        appDirs: ['apps/webapp'],
+        budgets: [{
+          appDir: 'apps/other',
+          label: 'other',
+          pattern: '\\.js$',
+          maxRawBytes: 10,
+        }],
+      },
+    }), [])).toThrow('outside bundleAudit.appDirs')
   })
 
   it('formats KiB and MiB sizes in the report', async () => {

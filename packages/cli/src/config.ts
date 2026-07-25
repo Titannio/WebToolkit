@@ -282,10 +282,19 @@ export type JSDocReportConfig = {
   promptForReport?: boolean
 }
 
+export type BundleBudgetConfig = {
+  appDir: string
+  label: string
+  pattern: string
+  maxRawBytes: number
+  required?: boolean
+}
+
 export type BundleAuditConfig = {
   appDirs: string[]
   top?: number
   rawWarningBytes?: number
+  budgets?: BundleBudgetConfig[]
 }
 
 export type UpgradeConfig = {
