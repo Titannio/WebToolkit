@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
+  downloadBlobFile,
   isImageFile,
   validateDocumentMagicBytes,
   validateImageMagicBytes,
@@ -84,5 +85,19 @@ describe('browser/files', () => {
     nextError = new Error('FileReader failure')
     const file = { slice: vi.fn() } as unknown as File
     await expect(validateImageMagicBytes(file)).rejects.toThrow('FileReader failure')
+  })
+
+  it('downloads blobs and releases the object URL', () => {
+    const blob = new Blob(['report'])
+    const createObjectURL = vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:report')
+    const revokeObjectURL = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => undefined)
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined)
+
+    downloadBlobFile(blob, 'report.txt')
+
+    expect(createObjectURL).toHaveBeenCalledWith(blob)
+    expect(click).toHaveBeenCalledOnce()
+    expect(revokeObjectURL).toHaveBeenCalledWith('blob:report')
+    expect(document.querySelector('a[download="report.txt"]')).toBeNull()
   })
 })

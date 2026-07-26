@@ -44,6 +44,28 @@ export async function validateDocumentMagicBytes(file: File): Promise<boolean> {
   return isValidDocumentSignature(headerBytes)
 }
 
+/**
+ * Downloads a Blob using the browser's native object URL support.
+ *
+ * @param {Blob} blob - File contents.
+ * @param {string} filename - Suggested download name.
+ * @returns {void}
+ */
+export function downloadBlobFile(blob: Blob, filename: string): void {
+  const objectUrl = URL.createObjectURL(blob)
+  const anchor = document.createElement('a')
+
+  try {
+    anchor.href = objectUrl
+    anchor.download = filename
+    document.body.append(anchor)
+    anchor.click()
+  } finally {
+    anchor.remove()
+    URL.revokeObjectURL(objectUrl)
+  }
+}
+
 async function readFileHead(file: File, bytesToRead: number): Promise<Uint8Array> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()

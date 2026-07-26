@@ -20,13 +20,17 @@ Install optional peers only when you use their entrypoints:
 ```ts
 import { formatCurrency, resolveGeoPointCoordinates } from '@titannio/webtoolkit-utils'
 import { shareContent } from '@titannio/webtoolkit-utils/browser'
-import { isImageFile } from '@titannio/webtoolkit-utils/browser/files'
+import { downloadBlobFile, isImageFile } from '@titannio/webtoolkit-utils/browser/files'
+import { stableStringify } from '@titannio/webtoolkit-utils/data'
 import { normalizeMongoose } from '@titannio/webtoolkit-utils/database/mongodb'
 import { useDebounce } from '@titannio/webtoolkit-utils/frameworks/react'
 import { wrapZodSchema } from '@titannio/webtoolkit-utils/frameworks/mantine'
 import { generateRandomPassword } from '@titannio/webtoolkit-utils/server'
 import { extractIpAddress } from '@titannio/webtoolkit-utils/server/http'
 import { processImage } from '@titannio/webtoolkit-utils/server/media'
+import { extractBearerToken } from '@titannio/webtoolkit-utils/server/security'
+import { escapeHtml } from '@titannio/webtoolkit-utils/text'
+import { MemoryCache } from '@titannio/webtoolkit-utils/runtime/cache'
 ```
 
 ## Notes

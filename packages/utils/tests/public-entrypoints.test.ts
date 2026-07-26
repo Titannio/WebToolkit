@@ -24,6 +24,7 @@ import * as search from '@src/search/index.js'
 import * as security from '@src/security/index.js'
 import * as server from '@src/server/index.js'
 import * as serverHttp from '@src/server/http/index.js'
+import * as serverSecurity from '@src/server/security/index.js'
 import * as text from '@src/text/index.js'
 import * as types from '@src/types/index.js'
 import * as ui from '@src/ui/index.js'
@@ -34,6 +35,7 @@ describe('public entrypoints', () => {
     expect(root.formatCurrency).toBeTypeOf('function')
     expect(browser.processImage).toBeTypeOf('function')
     expect(browserFiles.isImageFile).toBeTypeOf('function')
+    expect(browserFiles.downloadBlobFile).toBeTypeOf('function')
     expect(countries.getCountryConfig).toBeTypeOf('function')
     expect(countryBR.formatCPF).toBeTypeOf('function')
     expect(mongodb.normalizeMongoose).toBeTypeOf('function')
@@ -42,6 +44,7 @@ describe('public entrypoints', () => {
     expect(server.generateRandomPassword).toBeTypeOf('function')
     expect(core.extractErrorMessage).toBeTypeOf('function')
     expect(data.parseJSONDates).toBeTypeOf('function')
+    expect(data.stableStringify).toBeTypeOf('function')
     expect(dates.getAgeFromDate).toBeTypeOf('function')
     expect(dates.toDate).toBeTypeOf('function')
     expect(files.isValidImageSignature).toBeTypeOf('function')
@@ -49,6 +52,8 @@ describe('public entrypoints', () => {
     expect(geo.resolveGeoPointCoordinates).toBeTypeOf('function')
     expect(network.ensureUrlProtocol).toBeTypeOf('function')
     expect(serverHttp.extractIpAddress).toBeTypeOf('function')
+    expect(serverSecurity.extractBearerToken).toBeTypeOf('function')
+    expect(serverSecurity.timingSafeEqualStrings).toBeTypeOf('function')
     expect(numbers.formatPercentRatio).toBeTypeOf('function')
     expect(pagination.createPaginationQuerySchema).toBeTypeOf('function')
     expect(privacy.maskSensitiveData).toBeTypeOf('function')
@@ -58,6 +63,7 @@ describe('public entrypoints', () => {
     expect(security.parseJwt).toBeTypeOf('function')
     expect(text.toSlug).toBeTypeOf('function')
     expect(text.toKebabCase).toBeTypeOf('function')
+    expect(text.escapeHtml).toBeTypeOf('function')
     expect(types.PHONE_TYPE).toBeDefined()
     expect(ui.getContrastColor).toBeTypeOf('function')
     expect(validation.validateEmail).toBeTypeOf('function')

@@ -35,6 +35,39 @@ const parseDateString = (value: string): Date | undefined => {
 }
 
 /**
+ * Serializes a value with object keys in deterministic order.
+ *
+ * Native JSON semantics are preserved for arrays, `toJSON`, omitted values,
+ * circular references, and unsupported primitives.
+ *
+ * @param {unknown} value - Value to serialize.
+ * @returns {string | undefined} Deterministic JSON output.
+ */
+export function stableStringify(value: unknown): string | undefined {
+  const sortedObjects = new WeakMap<object, object>()
+
+  return JSON.stringify(value, (_key, currentValue: unknown) => {
+    if (currentValue === null || typeof currentValue !== 'object' || Array.isArray(currentValue)) {
+      return currentValue
+    }
+    if (['[object BigInt]', '[object Boolean]', '[object Number]', '[object String]']
+      .includes(Object.prototype.toString.call(currentValue))) {
+      return currentValue
+    }
+
+    const cached = sortedObjects.get(currentValue)
+    if (cached) return cached
+
+    const sorted = Object.create(null) as Record<string, unknown>
+    sortedObjects.set(currentValue, sorted)
+    for (const key of Object.keys(currentValue).sort()) {
+      sorted[key] = (currentValue as Record<string, unknown>)[key]
+    }
+    return sorted
+  })
+}
+
+/**
  * Recursively removes nodes with value equal to `valueToRemove` and empty objects/arrays.
  * 
  * This is useful for cleaning up sparse data structures or removing specific 

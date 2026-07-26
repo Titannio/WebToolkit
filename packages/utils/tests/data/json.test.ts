@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { cleanTree, normalizeId, removeUndefined, parseJSONDates } from '@src/data/json.js'
+import { cleanTree, normalizeId, removeUndefined, parseJSONDates, stableStringify } from '@src/data/json.js'
 
 describe('JSON Utils', () => {
     describe('cleanTree', () => {
@@ -42,6 +42,32 @@ describe('JSON Utils', () => {
                 own: 'keep',
                 list: [{ nested: 'keep' }],
             })
+        })
+    })
+
+    describe('stableStringify', () => {
+        it('sorts nested object keys while preserving JSON array and omission semantics', () => {
+            const value = {
+                z: undefined,
+                b: [{ d: 4, c: 3 }, undefined],
+                a: { y: 2, x: 1 },
+                date: new Date('2026-01-02T03:04:05.000Z'),
+            }
+
+            expect(stableStringify(value)).toBe(
+                '{"a":{"x":1,"y":2},"b":[{"c":3,"d":4},null],"date":"2026-01-02T03:04:05.000Z"}',
+            )
+            expect(stableStringify(Object(2))).toBe('2')
+            expect(stableStringify(undefined)).toBeUndefined()
+        })
+
+        it('preserves native errors for circular references and BigInt values', () => {
+            const circular: Record<string, unknown> = {}
+            circular.self = circular
+
+            expect(() => stableStringify(circular)).toThrow(TypeError)
+            expect(() => stableStringify(1n)).toThrow(TypeError)
+            expect(() => stableStringify(Object(1n))).toThrow(TypeError)
         })
     })
 

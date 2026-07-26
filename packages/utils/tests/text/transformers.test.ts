@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { stringToDelimitedArray, onlyNumbers, maskNumber, stripHtmlTags } from '@src/text/transformers.js'
+import { escapeHtml, stringToDelimitedArray, onlyNumbers, maskNumber, stripHtmlTags } from '@src/text/transformers.js'
 
 describe('Transformers: stringToDelimitedArray', () => {
   it('should split comma-separated string into array', () => {
@@ -67,11 +67,10 @@ describe('Transformers: stripHtmlTags', () => {
   })
 })
 
-
-
-
-
-
-
-
-
+describe('Transformers: escapeHtml', () => {
+  it('escapes HTML-significant characters without double-processing replacements', () => {
+    expect(escapeHtml(`<a title="Tom & Jerry's">`)).toBe(
+      '&lt;a title=&quot;Tom &amp; Jerry&#39;s&quot;&gt;',
+    )
+  })
+})

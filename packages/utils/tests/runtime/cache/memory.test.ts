@@ -64,4 +64,47 @@ describe('MemoryCache', () => {
         vi.useRealTimers()
         expect(cache.has('key1')).toBe(false)
     })
+
+    it('should apply a default TTL while allowing an explicit zero override', () => {
+        vi.useFakeTimers()
+        vi.setSystemTime(new Date('2026-01-01T00:00:00.000Z'))
+        const cache = new MemoryCache<string>({ defaultTtlMs: 10 })
+        cache.set('expiring', 'value')
+        cache.set('persistent', 'value', 0)
+
+        vi.setSystemTime(new Date('2026-01-01T00:00:00.020Z'))
+        expect(cache.get('expiring')).toBeUndefined()
+        expect(cache.get('persistent')).toBe('value')
+        vi.clearAllTimers()
+        vi.useRealTimers()
+    })
+
+    it('should evict the least recently used entry and expose live size', () => {
+        const cache = new MemoryCache<number>({ maxEntries: 2 })
+        cache.set('a', 1)
+        cache.set('b', 2)
+        expect(cache.get('a')).toBe(1)
+        cache.set('c', 3)
+
+        expect(cache.get('b')).toBeUndefined()
+        expect(cache.get('a')).toBe(1)
+        expect(cache.get('c')).toBe(3)
+        expect(cache.size).toBe(2)
+    })
+
+    it('should omit expired entries from size and reject invalid new options', () => {
+        vi.useFakeTimers()
+        vi.setSystemTime(new Date('2026-01-01T00:00:00.000Z'))
+        const cache = new MemoryCache({ defaultTtlMs: 10 })
+        cache.set('key', 'value')
+        vi.setSystemTime(new Date('2026-01-01T00:00:00.020Z'))
+
+        expect(cache.size).toBe(0)
+        expect(() => new MemoryCache({ defaultTtlMs: -1 })).toThrow('defaultTtlMs')
+        expect(() => new MemoryCache({ defaultTtlMs: Number.POSITIVE_INFINITY })).toThrow('defaultTtlMs')
+        expect(() => new MemoryCache({ maxEntries: 0 })).toThrow('maxEntries')
+        expect(() => new MemoryCache({ maxEntries: 1.5 })).toThrow('maxEntries')
+        vi.clearAllTimers()
+        vi.useRealTimers()
+    })
 })

@@ -86,3 +86,19 @@ export function stripHtmlTags(value: string | undefined): string | undefined {
   }
   return value.replace(/<[^>]*>?/gm, '').trim()
 }
+
+/**
+ * Escapes the HTML-significant characters in a string.
+ *
+ * @param {string} value - Raw text.
+ * @returns {string} HTML-safe text.
+ */
+export function escapeHtml(value: string): string {
+  return value.replace(/[&<>"']/g, character => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;',
+  })[character]!)
+}

@@ -4,6 +4,16 @@
  */
 
 /**
+ * Optional cache expiration and capacity defaults.
+ */
+export interface MemoryCacheOptions {
+    /** Default time-to-live in milliseconds. Zero disables expiration. */
+    defaultTtlMs?: number
+    /** Maximum number of entries retained using least-recently-used eviction. */
+    maxEntries?: number
+}
+
+/**
  * Simple in-memory cache utility with key-based storage and expiration support.
  * Designed to be framework-agnostic and work in both Node.js and Browser environments.
  *
@@ -22,6 +32,27 @@ export class MemoryCache<T = unknown> {
      */
     #timers = new Map<string, ReturnType<typeof setTimeout>>();
 
+    #defaultTtlMs?: number
+
+    #maxEntries?: number
+
+    /**
+     * Creates a cache with optional default expiration and capacity.
+     *
+     * @param {MemoryCacheOptions} [options={}] - Cache defaults.
+     */
+    constructor({ defaultTtlMs, maxEntries }: MemoryCacheOptions = {}) {
+        if (defaultTtlMs !== undefined && (!Number.isFinite(defaultTtlMs) || defaultTtlMs < 0)) {
+            throw new Error('defaultTtlMs must be a non-negative finite number')
+        }
+        if (maxEntries !== undefined && (!Number.isInteger(maxEntries) || maxEntries < 1)) {
+            throw new Error('maxEntries must be a positive integer')
+        }
+
+        this.#defaultTtlMs = defaultTtlMs
+        this.#maxEntries = maxEntries
+    }
+
     /**
      * Retrieves an item from the cache.
      *
@@ -35,6 +66,11 @@ export class MemoryCache<T = unknown> {
         if (entry.expiresAt && Date.now() > entry.expiresAt) {
             this.delete(key);
             return undefined;
+        }
+
+        if (this.#maxEntries !== undefined) {
+            this.#cache.delete(key)
+            this.#cache.set(key, entry)
         }
 
         return entry.value;
@@ -51,13 +87,29 @@ export class MemoryCache<T = unknown> {
     set(key: string, value: T, ttlMs?: number): void {
         this.delete(key); // Clear existing timer/value
 
-        const expiresAt = ttlMs ? Date.now() + ttlMs : undefined;
+        const effectiveTtlMs = ttlMs ?? this.#defaultTtlMs
+        const expiresAt = effectiveTtlMs ? Date.now() + effectiveTtlMs : undefined;
         this.#cache.set(key, { value, expiresAt });
 
-        if (ttlMs) {
-            const timer = setTimeout(() => this.delete(key), ttlMs);
+        if (effectiveTtlMs) {
+            const timer = setTimeout(() => this.delete(key), effectiveTtlMs);
             this.#timers.set(key, timer);
         }
+
+        if (this.#maxEntries !== undefined && this.#cache.size > this.#maxEntries) {
+            this.delete(this.#cache.keys().next().value!)
+        }
+    }
+
+    /**
+     * Number of unexpired entries.
+     */
+    get size(): number {
+        const now = Date.now()
+        for (const [key, entry] of this.#cache) {
+            if (entry.expiresAt && now > entry.expiresAt) this.delete(key)
+        }
+        return this.#cache.size
     }
 
     /**
