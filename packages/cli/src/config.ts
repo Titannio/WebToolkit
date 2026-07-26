@@ -252,6 +252,7 @@ export type WorkspaceTargetConfig = {
 
 export type WorkspaceTestsConfig = {
   workspaces: WorkspaceTargetConfig[]
+  executionMode?: 'turbo' | 'package-local'
   errorLogFile?: string
   testFilePattern?: string
   ignoreDirNames?: string[]

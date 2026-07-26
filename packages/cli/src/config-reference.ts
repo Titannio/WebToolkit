@@ -537,6 +537,12 @@ export const configSchema: JsonSchema = {
       additionalProperties: false,
       properties: {
         workspaces: { type: 'array', minItems: 1, items: { $ref: '#/$defs/workspaceTarget' } },
+        executionMode: {
+          type: 'string',
+          enum: ['turbo', 'package-local'],
+          default: 'turbo',
+          description: 'Run tests through Turbo or through each workspace package script.',
+        },
         errorLogFile: { ...projectPath(), default: 'tests_output_errors.log' },
         testFilePattern: { type: 'string', format: 'regex', default: '\\.(test|spec)\\.(ts|tsx|js|jsx)$' },
         ignoreDirNames: stringArray('Directory names skipped while counting tests.'),

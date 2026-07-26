@@ -12,6 +12,7 @@ import {
   drawProgressBar,
   extractFailureExcerpt,
   findFailedTestsSectionStartIndex,
+  formatCoverageSummary,
   formatFailureSummary,
   formatWorkspaceTestStatusLine,
   getFilterValue,
@@ -21,6 +22,7 @@ import {
   isFailureSummaryLine,
   isSameOrInsidePath,
   normalizeReportLine,
+  parseCoverageSummary,
   parseFailureSummary,
   parseTestFileLine,
   progressBlockHasFailure,
@@ -237,13 +239,26 @@ describe('workspace test parsing helpers', () => {
     expect(isSameOrInsidePath('C:/other', 'C:/repo')).toBe(false)
   })
 
+  it('parses and formats all coverage metrics', () => {
+    const coverage = parseCoverageSummary('All files | 49 | 50 | 79.95 | 80')
+
+    expect(coverage).toEqual({
+      statements: 49,
+      branches: 50,
+      functions: 79.95,
+      lines: 80,
+    })
+    expect(stripAnsi(formatCoverageSummary(coverage!))).toBe('S 49.0% B 50.0% F 80.0% L 80.0%')
+    expect(parseCoverageSummary('ordinary output')).toBeNull()
+  })
+
   it('draws progress and builds failure logs', () => {
     const write = vi.spyOn(process.stdout, 'write').mockImplementation(() => true)
     drawProgressBar('Testing', 'app', -1, 0, [])
     drawProgressBar('Testing', 'app', 2, 2, [false, true])
-    drawProgressBar('Coverage', 'app', 1, 1, [true], 49)
-    drawProgressBar('Coverage', 'app', 1, 1, [true], 50)
-    drawProgressBar('Coverage', 'app', 1, 1, [true], 80)
+    drawProgressBar('Coverage', 'app', 1, 1, [true], { statements: 49, branches: 49, functions: 49, lines: 49 })
+    drawProgressBar('Coverage', 'app', 1, 1, [true], { statements: 50, branches: 50, functions: 50, lines: 50 })
+    drawProgressBar('Coverage', 'app', 1, 1, [true], { statements: 80, branches: 80, functions: 80, lines: 80 })
     expect(write).toHaveBeenCalledTimes(5)
 
     const runtime = runtimeWithConfig('/repo', {
@@ -371,6 +386,33 @@ describe('workspace test task selection', () => {
       else process.env.INIT_CWD = previousInitCwd
       if (previousTurbo === undefined) delete process.env.WEBTOOLKIT_WORKSPACE_TEST_TURBO
       else process.env.WEBTOOLKIT_WORKSPACE_TEST_TURBO = previousTurbo
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  it('runs Vitest directly in package-local mode', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'webtoolkit-workspace-task-local-'))
+    const previousCwd = process.cwd()
+    try {
+      await writeFile(path.join(root, 'package.json'), '{"name":"app"}')
+      process.chdir(root)
+      commandMock.mockReturnValue({ command: 'pnpm', args: ['exec', 'vitest', 'run'] })
+      spawnSyncMock.mockReturnValue({ status: 0 } as never)
+      vi.spyOn(process, 'exit').mockImplementation(() => undefined as never)
+
+      runWorkspaceTestTask(runtimeWithConfig(root, {
+        packageManager: 'pnpm',
+        workspaceTests: { executionMode: 'package-local', workspaces: [] },
+      }), 'test', [])
+
+      expect(commandMock).toHaveBeenCalledWith('pnpm', ['exec', 'vitest', 'run'])
+      expect(spawnSyncMock).toHaveBeenCalledWith(
+        'pnpm',
+        ['exec', 'vitest', 'run'],
+        expect.objectContaining({ cwd: root }),
+      )
+    } finally {
+      process.chdir(previousCwd)
       await rm(root, { recursive: true, force: true })
     }
   })
@@ -597,11 +639,19 @@ describe('workspace full test execution', () => {
     })
 
     await expect(runWorkspaceTests(runtimeWithConfig(root, {
+      packageManager: 'pnpm',
       workspaceTests: {
+        executionMode: 'package-local',
         workspaces: [{ name: 'app', package: 'app', path: 'app' }],
       },
     }), [])).resolves.toBeUndefined()
 
+    expect(commandMock).toHaveBeenCalledWith('pnpm', ['run', 'test', '--', '--reporter=verbose'])
+    expect(spawnMock).toHaveBeenCalledWith(
+      'pnpm',
+      ['test'],
+      expect.objectContaining({ cwd: path.join(root, 'app') }),
+    )
     expect(console.info).toHaveBeenCalledWith(expect.stringContaining('\x1b[32mOK'))
     await rm(root, { recursive: true, force: true })
   })
@@ -672,7 +722,9 @@ describe('workspace coverage command', () => {
     })
 
     await expect(runWorkspaceCoverage(runtimeWithConfig(root, {
+      packageManager: 'pnpm',
       workspaceTests: {
+        executionMode: 'package-local',
         workspaces: [
           { name: 'empty', package: 'empty', path: 'empty' },
           { name: 'app', package: 'app', path: 'app' },
@@ -680,6 +732,12 @@ describe('workspace coverage command', () => {
       },
     }), [])).resolves.toBeUndefined()
 
+    expect(commandMock).toHaveBeenCalledWith('pnpm', ['run', 'test:coverage'])
+    expect(spawnMock).toHaveBeenCalledWith(
+      'pnpm',
+      ['coverage'],
+      expect.objectContaining({ cwd: path.join(root, 'app') }),
+    )
     expect(console.info).toHaveBeenCalledWith(expect.stringContaining('Coverage reports'))
     await rm(root, { recursive: true, force: true })
   })

@@ -337,6 +337,7 @@ webtoolkit release-gate package-surface
 Workspace test fields:
 
 - `workspaces`: array of `{ "name", "package", "path" }`. `package` is the package-manager filter name; `path` is project-relative.
+- `executionMode`: optional runner mode. `turbo` is the default; `package-local` runs each workspace's package scripts from its own directory.
 - `errorLogFile`: optional consolidated failure log path. Defaults to `tests_output_errors.log`.
 - `testFilePattern`: optional regex string for test files. Defaults to `\\.(test|spec)\\.(ts|tsx|js|jsx)$`.
 - `ignoreDirNames`: optional directory names skipped while counting test files.
@@ -493,6 +494,7 @@ Workspace test engine:
 ```json
 {
   "workspaceTests": {
+    "executionMode": "package-local",
     "errorLogFile": "tests_output_errors.log",
     "workspaces": [
       { "name": "Core", "package": "@acme/core", "path": "packages/core" },
@@ -502,7 +504,7 @@ Workspace test engine:
 }
 ```
 
-Use package scripts inside each workspace:
+For `package-local`, define package scripts inside each workspace:
 
 ```json
 {

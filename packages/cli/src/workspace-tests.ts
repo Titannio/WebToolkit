@@ -24,6 +24,13 @@ type WorkspaceResult = {
   skipped?: boolean
 }
 
+export type CoverageSummary = {
+  statements: number
+  branches: number
+  functions: number
+  lines: number
+}
+
 const defaultTestFilePattern = '\\.(test|spec)\\.(ts|tsx|js|jsx)$'
 const defaultIgnoreDirNames = ['node_modules', 'dist', '.git']
 
@@ -224,7 +231,40 @@ export function progressBlockHasFailure(index: number, width: number, total: num
   return false
 }
 
-export function drawProgressBar(label: string, name: string, completed: number, total: number, results: boolean[], coverage: number | null = null): void {
+function formatCoverageMetric(label: string, value: number): string {
+  const color = value >= 80 ? '\x1b[32m' : value >= 50 ? '\x1b[33m' : '\x1b[31m'
+  return `${label} ${color}${value.toFixed(1)}%\x1b[0m`
+}
+
+export function formatCoverageSummary(coverage: CoverageSummary): string {
+  return [
+    formatCoverageMetric('S', coverage.statements),
+    formatCoverageMetric('B', coverage.branches),
+    formatCoverageMetric('F', coverage.functions),
+    formatCoverageMetric('L', coverage.lines),
+  ].join(' ')
+}
+
+export function parseCoverageSummary(line: string): CoverageSummary | null {
+  const match = stripAnsi(line).match(/All files\s*\|\s*([\d.]+)\s*\|\s*([\d.]+)\s*\|\s*([\d.]+)\s*\|\s*([\d.]+)/i)
+  if (!match) return null
+
+  return {
+    statements: Number.parseFloat(match[1]),
+    branches: Number.parseFloat(match[2]),
+    functions: Number.parseFloat(match[3]),
+    lines: Number.parseFloat(match[4]),
+  }
+}
+
+export function drawProgressBar(
+  label: string,
+  name: string,
+  completed: number,
+  total: number,
+  results: boolean[],
+  coverage: CoverageSummary | null = null,
+): void {
   const safeTotal = Math.max(total, 1)
   const safeCompleted = Math.min(Math.max(completed, 0), safeTotal)
   const width = label === 'Coverage' ? 40 : 60
@@ -243,7 +283,7 @@ export function drawProgressBar(label: string, name: string, completed: number, 
 
   const coverageText = coverage === null
     ? ''
-    : ` | Coverage: ${(coverage >= 80 ? '\x1b[32m' : coverage >= 50 ? '\x1b[33m' : '\x1b[31m')}${coverage.toFixed(1)}%\x1b[0m`
+    : ` | Coverage: ${formatCoverageSummary(coverage)}`
   process.stdout.write(`\r- ${label} \x1b[1m${name.padEnd(10)}\x1b[0m [${barStr}] ${percentage}% (${safeCompleted}/${total})${coverageText} `)
 }
 
@@ -272,6 +312,36 @@ export function resolveTargets(runtime: Runtime, rawArgs: string[]): WorkspaceTa
   }
 
   return targets
+}
+
+function resolveWorkspaceCommand(
+  runtime: Runtime,
+  target: WorkspaceTargetConfig,
+  taskName: 'test' | 'test:coverage',
+  extraArgs: string[] = [],
+) {
+  if (runtime.config.workspaceTests?.executionMode === 'package-local') {
+    return {
+      commandSpec: buildPackageManagerCommand(runtime.config.packageManager, [
+        'run',
+        taskName,
+        ...(extraArgs.length > 0 ? ['--', ...extraArgs] : []),
+      ]),
+      cwd: path.resolve(runtime.cwd, target.path),
+    }
+  }
+
+  return {
+    commandSpec: buildPackageManagerCommand(runtime.config.packageManager, [
+      'turbo',
+      'run',
+      taskName,
+      '--filter',
+      target.package,
+      ...(extraArgs.length > 0 ? ['--', ...extraArgs] : []),
+    ]),
+    cwd: runtime.cwd,
+  }
 }
 
 async function runWorkspaceTest(target: WorkspaceTargetConfig, runtime: Runtime): Promise<WorkspaceResult> {
@@ -304,7 +374,7 @@ async function runWorkspaceTest(target: WorkspaceTargetConfig, runtime: Runtime)
   let hasFailure = false
   let outputBuffer = ''
   const startedAt = Date.now()
-  const commandSpec = buildPackageManagerCommand(runtime.config.packageManager, ['turbo', 'run', 'test', '--filter', target.package, '--', '--reporter=verbose'])
+  const { commandSpec, cwd } = resolveWorkspaceCommand(runtime, target, 'test', ['--reporter=verbose'])
   const commandText = `${commandSpec.command} ${commandSpec.args.join(' ')}`
 
   drawProgressBar('Testing', target.name, 0, totalFiles, results)
@@ -332,7 +402,7 @@ async function runWorkspaceTest(target: WorkspaceTargetConfig, runtime: Runtime)
     }
 
     const child = spawn(commandSpec.command, commandSpec.args, {
-      cwd: runtime.cwd,
+      cwd,
       env: { ...process.env, FORCE_COLOR: '1', CI: '1', NODE_OPTIONS: '--no-deprecation' },
       stdio: ['ignore', 'pipe', 'pipe'],
       shell: false,
@@ -439,16 +509,16 @@ export async function runWorkspaceCoverage(runtime: Runtime, rawArgs: string[]):
     }
 
     const startedAt = Date.now()
-    const commandSpec = buildPackageManagerCommand(runtime.config.packageManager, ['turbo', 'run', 'test:coverage', '--filter', target.package])
+    const { commandSpec, cwd } = resolveWorkspaceCommand(runtime, target, 'test:coverage')
     let processedFiles = 0
-    let totalCoverage: number | null = null
+    let totalCoverage: CoverageSummary | null = null
     let outputBuffer = ''
     const results: boolean[] = []
     drawProgressBar('Coverage', target.name, 0, totalFiles, results, totalCoverage)
 
     const code = await new Promise<number>((resolve) => {
       const child = spawn(commandSpec.command, commandSpec.args, {
-        cwd: runtime.cwd,
+        cwd,
         env: { ...process.env, FORCE_COLOR: '1', CI: '1', NODE_OPTIONS: '--no-deprecation' },
         stdio: ['ignore', 'pipe', 'pipe'],
         shell: false,
@@ -463,9 +533,9 @@ export async function runWorkspaceCoverage(runtime: Runtime, rawArgs: string[]):
             results.push(true)
             drawProgressBar('Coverage', target.name, Math.min(processedFiles, totalFiles), totalFiles, results, totalCoverage)
           }
-          const covMatch = cleanLine.match(/All files\s+\|\s+([\d.]+)\s+\|\s+([\d.]+)\s+\|\s+([\d.]+)\s+\|\s+([\d.]+)/)
-          if (covMatch) {
-            totalCoverage = Number.parseFloat(covMatch[4])
+          const coverage = parseCoverageSummary(cleanLine)
+          if (coverage) {
+            totalCoverage = coverage
             drawProgressBar('Coverage', target.name, totalFiles, totalFiles, results, totalCoverage)
           }
         }
@@ -517,7 +587,8 @@ export function runWorkspaceTestTask(runtime: Runtime, taskName: string, extraAr
   const initCwd = process.env.INIT_CWD ? path.resolve(process.env.INIT_CWD) : null
   const isInvokedFromOutsidePackage = initCwd !== null && !isSameOrInsidePath(initCwd, packageDir)
   const isRunningInsideTurbo = process.env.WEBTOOLKIT_WORKSPACE_TEST_TURBO === '1' || hasTurboContext || isInvokedFromOutsidePackage
-  const commandSpec = isRunningInsideTurbo
+  const isDirectRunner = runtime.config.workspaceTests?.executionMode === 'package-local' || isRunningInsideTurbo
+  const commandSpec = isDirectRunner
     ? buildPackageManagerCommand(runtime.config.packageManager, taskName === 'test:coverage'
       ? ['exec', 'vitest', 'run', '--coverage', ...extraArgs]
       : ['exec', 'vitest', 'run', ...extraArgs])
@@ -526,7 +597,7 @@ export function runWorkspaceTestTask(runtime: Runtime, taskName: string, extraAr
       : ['turbo', 'run', taskName, `--filter=${packageJson.name}`])
 
   const result = spawnSync(commandSpec.command, commandSpec.args, {
-    cwd: isRunningInsideTurbo ? packageDir : runtime.cwd,
+    cwd: isDirectRunner ? packageDir : runtime.cwd,
     env: {
       ...process.env,
       FORCE_COLOR: process.env.FORCE_COLOR || '1',

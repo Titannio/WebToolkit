@@ -47,6 +47,7 @@ describe('config reference', () => {
     expect(formatConfigHelp('devWatch')).toContain('default="127.0.0.1"')
     expect(formatConfigHelp('upgrade')).toContain('singletonGuardCommand (object; optional)')
     expect(formatConfigHelp('repoCheck')).toContain('default=false')
+    expect(formatConfigHelp('workspaceTests')).toContain('executionMode (string; optional; default="turbo")')
     expect(formatConfigHelp('guards')).toContain('internalLink')
     expect(formatConfigHelp('guards')).toContain('packageSurface')
     expect(formatConfigHelp('guards')).toContain('repositoryHygiene')
@@ -124,6 +125,7 @@ describe('config reference', () => {
         },
       },
       workspaceTests: {
+        executionMode: 'package-local',
         workspaces: [{ name: 'Web', package: '@acme/web', path: 'apps/web' }],
       },
       bundleAudit: {
