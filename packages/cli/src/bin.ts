@@ -1,6 +1,5 @@
 #!/usr/bin/env node
 import path from 'node:path'
-import { fileURLToPath } from 'node:url'
 
 import { loadConfig } from './config.js'
 import { runConfigReference } from './config-reference.js'
@@ -11,6 +10,7 @@ import { runDevGrid } from './dev-grid.js'
 import { runDevWatch } from './dev-watch.js'
 import { runEnvBootstrap, runEnvDoctor } from './environment.js'
 import { printGuardHelp, runBuiltinGuard } from './guard-runner.js'
+import { isMainModule } from './guards/guard-config.js'
 import { runJSDocReport } from './jsdoc-report.js'
 import { runReadyService } from './ready-service.js'
 import { runRepoCheck } from './repo-check.js'
@@ -304,7 +304,7 @@ export async function main(rawArgs = process.argv.slice(2), cwd = process.cwd())
 }
 
 /* v8 ignore start -- executable adapter; main() is covered directly */
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+if (isMainModule(import.meta.url)) {
   main().catch((error: unknown) => {
     console.error((error as Error).message)
     process.exit(1)

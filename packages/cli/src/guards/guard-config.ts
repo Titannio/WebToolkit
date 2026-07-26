@@ -111,5 +111,6 @@ export function assertConfiguredScanScope(options: {
 }
 
 export function isMainModule(moduleUrl: string, argv = process.argv): boolean {
-  return Boolean(argv[1]) && path.resolve(argv[1]) === fileURLToPath(moduleUrl)
+  return Boolean(argv[1])
+    && fs.realpathSync(path.resolve(argv[1])) === fs.realpathSync(fileURLToPath(moduleUrl))
 }

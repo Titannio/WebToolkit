@@ -1,6 +1,7 @@
 import fs, { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   BASE_JSX_EXTENSIONS,
@@ -9,6 +10,7 @@ import {
   assertConfiguredScanScope,
   compilePatterns,
   hasExtension,
+  isMainModule,
   loadGuardConfig,
   resolveProjectPath,
 } from './guard-config.js'
@@ -108,5 +110,27 @@ describe('guard safe bases', () => {
     const noConfig = mkdtempSync(path.join(os.tmpdir(), 'webtoolkit-guard-config-'))
     tempDirectories.push(noConfig)
     await expect(loadGuardConfig('schema', noConfig)).rejects.toThrow('guards.schema is not configured')
+  })
+})
+
+describe('main module detection', () => {
+  it('recognizes direct execution and rejects missing or different entrypoints', () => {
+    expect(isMainModule(import.meta.url, ['node', fileURLToPath(import.meta.url)])).toBe(true)
+    expect(isMainModule(import.meta.url, ['node', process.execPath])).toBe(false)
+    expect(isMainModule(import.meta.url, ['node'])).toBe(false)
+  })
+
+  it('recognizes a pnpm-style symlinked entrypoint', () => {
+    const root = mkdtempSync(path.join(os.tmpdir(), 'webtoolkit-main-module-'))
+    tempDirectories.push(root)
+    const storeDirectory = path.join(root, 'store', 'package')
+    const linkedDirectory = path.join(root, 'node_modules', 'package')
+    const storeEntrypoint = path.join(storeDirectory, 'bin.js')
+    mkdirSync(storeDirectory, { recursive: true })
+    mkdirSync(path.dirname(linkedDirectory), { recursive: true })
+    writeFileSync(storeEntrypoint, '', 'utf8')
+    fs.symlinkSync(storeDirectory, linkedDirectory, process.platform === 'win32' ? 'junction' : 'dir')
+
+    expect(isMainModule(pathToFileURL(storeEntrypoint).href, ['node', path.join(linkedDirectory, 'bin.js')])).toBe(true)
   })
 })
