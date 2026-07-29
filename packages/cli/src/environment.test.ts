@@ -126,6 +126,11 @@ describe('environment commands', () => {
     runEnvBootstrap(runtime(root))
 
     expect(info).toHaveBeenCalledWith(expect.stringContaining('Installing it via npm'))
+    expect(spawnSync).toHaveBeenCalledWith(
+      expect.stringMatching(/npm(?:\.cmd)?$/u),
+      ['install', '--global', '--force', 'corepack'],
+      expect.any(Object),
+    )
     expect(info).toHaveBeenCalledWith('pnpm: 11.17.0')
   })
 
@@ -143,6 +148,26 @@ describe('environment commands', () => {
     expect(() => runEnvBootstrap(runtime(root, major))).not.toThrow()
   })
 
+  it('preserves Corepack integrity metadata during bootstrap', () => {
+    const packageManager = 'pnpm@11.17.0+sha512.fixture'
+    const root = createRepo(packageManager)
+    vi.spyOn(fs, 'existsSync').mockReturnValue(true)
+    vi.mocked(spawnSync).mockImplementation((_command, args) => ({
+      status: 0,
+      stdout: Array.isArray(args) && args.includes('--version') ? '11.17.0' : '',
+      stderr: '',
+    }) as never)
+    vi.spyOn(console, 'info').mockImplementation(() => undefined)
+
+    runEnvBootstrap(runtime(root))
+
+    expect(spawnSync).toHaveBeenCalledWith(
+      expect.any(String),
+      ['prepare', packageManager, '--activate'],
+      expect.any(Object),
+    )
+  })
+
   it('rejects the wrong Node major and a missing npm CLI', () => {
     const root = createRepo()
     const major = Number(process.versions.node.split('.')[0])
@@ -150,21 +175,21 @@ describe('environment commands', () => {
 
     const existsSync = fs.existsSync
     vi.spyOn(fs, 'existsSync').mockImplementation((filePath) => (
-      String(filePath).endsWith('npm-cli.js') ? false : existsSync(filePath)
+      /npm(?:\.cmd)?$/u.test(String(filePath)) ? false : existsSync(filePath)
     ))
-    expect(() => runEnvBootstrap(runtime(root))).toThrow('npm CLI was not found')
+    expect(() => runEnvBootstrap(runtime(root))).toThrow('npm was not found')
   })
 
   it('uses the Windows shell and quotes a Node installation path containing spaces', () => {
     const root = createRepo()
     vi.spyOn(process, 'platform', 'get').mockReturnValue('win32')
-    vi.spyOn(process, 'execPath', 'get').mockReturnValue('C:\\Program Files\\nodejs\\node.exe')
+    vi.spyOn(process, 'execPath', 'get').mockReturnValue('C:/Program Files/nodejs/node.exe')
     vi.spyOn(fs, 'existsSync').mockReturnValue(true)
     vi.mocked(spawnSync).mockReturnValue({ status: 0 } as never)
 
     prepareCorepackPnpm(runtime(root), root, '11.17.0')
 
-    expect(spawnSync).toHaveBeenCalledWith(expect.stringContaining('"C:\\Program Files\\nodejs\\corepack.cmd"'), expect.objectContaining({
+    expect(spawnSync).toHaveBeenCalledWith(expect.stringContaining('"C:/Program Files/nodejs/corepack.cmd"'), expect.objectContaining({
       shell: true,
     }))
   })
@@ -178,6 +203,16 @@ describe('environment commands', () => {
     const info = vi.spyOn(console, 'info').mockImplementation(() => undefined)
 
     runEnvDoctor(runtime(root, major))
+
+    expect(info).toHaveBeenCalledWith('Environment doctor passed.')
+  })
+
+  it('passes environment doctor for matching pins with Corepack integrity metadata', () => {
+    const root = createRepo('pnpm@11.17.0+sha512.fixture')
+    vi.mocked(spawnSync).mockReturnValue({ status: 0, stdout: '11.17.0\n', stderr: '' } as never)
+    const info = vi.spyOn(console, 'info').mockImplementation(() => undefined)
+
+    runEnvDoctor(runtime(root))
 
     expect(info).toHaveBeenCalledWith('Environment doctor passed.')
   })

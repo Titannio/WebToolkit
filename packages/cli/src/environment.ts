@@ -111,25 +111,24 @@ export function prepareCorepackPnpm(runtime: Runtime, repoRoot: string, version:
 export function runEnvBootstrap(runtime: Runtime): void {
   const repoRoot = findRepoRoot(runtime.cwd)
   const requiredPnpmVersion = readRequiredPnpmVersion(repoRoot)
-  const nodeInstallDir = path.dirname(process.execPath)
-  const npmCliPath = path.join(nodeInstallDir, 'node_modules', 'npm', 'bin', 'npm-cli.js')
+  const npm = resolveNodeSiblingBinary('npm')
 
   assertNodeMajor(runtime)
-  if (!fs.existsSync(npmCliPath)) throw new Error(`npm CLI was not found under the active Node installation: ${npmCliPath}`)
+  if (!fs.existsSync(npm)) throw new Error(`npm was not found next to the active Node installation: ${npm}`)
 
   const corepack = resolveNodeSiblingBinary('corepack')
   if (!fs.existsSync(corepack)) {
     console.info('Corepack was not found in the active Node installation. Installing it via npm...')
-    runCommand(process.execPath, [npmCliPath, 'install', '--global', '--force', 'corepack'], repoRoot, runtime)
+    runCommand(npm, ['install', '--global', '--force', 'corepack'], repoRoot, runtime)
   }
 
   prepareCorepackPnpm(runtime, repoRoot, requiredPnpmVersion)
 
   console.info(`Node: ${process.versions.node}`)
-  console.info(`npm: ${captureCommand(process.execPath, [npmCliPath, '--version'], repoRoot, runtime)}`)
+  console.info(`npm: ${captureCommand(npm, ['--version'], repoRoot, runtime)}`)
   console.info(`pnpm: ${captureCommand(resolveNodeSiblingBinary('pnpm'), ['--version'], repoRoot, runtime)}`)
   console.info(`node path: ${process.execPath}`)
-  console.info(`npm path: ${npmCliPath}`)
+  console.info(`npm path: ${npm}`)
   console.info(`pnpm path: ${resolveNodeSiblingBinary('pnpm')}`)
   console.info(`repo root: ${repoRoot}`)
 }
@@ -153,7 +152,8 @@ export function runEnvDoctor(runtime: Runtime): void {
 
   try {
     const pnpmVersion = captureCommand(resolveNodeSiblingBinary('pnpm'), ['--version'], repoRoot, runtime)
-    if (pnpmVersion !== requiredPnpmVersion) failures.push(`Expected pnpm ${requiredPnpmVersion} but found ${pnpmVersion}.`)
+    const expectedPnpmVersion = semver.valid(requiredPnpmVersion) as string
+    if (pnpmVersion !== expectedPnpmVersion) failures.push(`Expected pnpm ${expectedPnpmVersion} but found ${pnpmVersion}.`)
   } catch (error) {
     failures.push((error as Error).message)
   }
