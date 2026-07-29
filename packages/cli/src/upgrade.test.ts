@@ -360,11 +360,19 @@ describe('protected upgrade helpers', () => {
     await expect(getReleaseDate(runtime, 'pkg', '1.0.0')).rejects.toThrow('Unable to read')
     await expect(getReleaseDate(runtime, 'pkg', '1.0.0')).rejects.toThrow('Invalid npm release metadata')
 
-    vi.spyOn(process, 'platform', 'get').mockReturnValue('linux')
+    const platform = vi.spyOn(process, 'platform', 'get').mockReturnValue('linux')
     processMocks.runCommandBuffered.mockResolvedValueOnce(bufferedResult('{"1.0.0":"2026-01-01T00:00:00.000Z"}'))
     await getReleaseDate(runtime, 'pkg', '1.0.0')
     expect(processMocks.runCommandBuffered).toHaveBeenLastCalledWith(
       expect.objectContaining({ command: 'npm' }),
+      '/repo',
+    )
+
+    platform.mockReturnValue('win32')
+    processMocks.runCommandBuffered.mockResolvedValueOnce(bufferedResult('{"1.0.0":"2026-01-01T00:00:00.000Z"}'))
+    await getReleaseDate(runtime, 'pkg', '1.0.0')
+    expect(processMocks.runCommandBuffered).toHaveBeenLastCalledWith(
+      expect.objectContaining({ command: 'npm.cmd' }),
       '/repo',
     )
   })

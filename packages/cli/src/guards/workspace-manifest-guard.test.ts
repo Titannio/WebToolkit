@@ -192,8 +192,14 @@ describe('workspace manifest guard', () => {
       },
     })
     vi.spyOn(console, 'info').mockImplementation(() => undefined)
-    vi.spyOn(process, 'platform', 'get').mockReturnValue('linux')
+    const platform = vi.spyOn(process, 'platform', 'get').mockReturnValue('linux')
 
+    expect(await runWorkspaceManifestGuard({
+      rootDir: directory,
+      config: { packageRoots: ['apps'], requireWorkspaceProtocol: true, peerRequirements: [] },
+    })).toBe(0)
+
+    platform.mockReturnValue('win32')
     expect(await runWorkspaceManifestGuard({
       rootDir: directory,
       config: { packageRoots: ['apps'], requireWorkspaceProtocol: true, peerRequirements: [] },

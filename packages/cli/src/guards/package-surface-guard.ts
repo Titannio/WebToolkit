@@ -162,10 +162,15 @@ export function readPackedFiles(
       `package-surface: invalid npm pack JSON in ${packageDirectory}: ${(error as Error).message}`,
     )
   }
-  if (!Array.isArray(parsed) || parsed.length !== 1) {
+  const packages = Array.isArray(parsed)
+    ? parsed
+    : parsed && typeof parsed === 'object'
+      ? Object.values(parsed)
+      : []
+  if (packages.length !== 1) {
     throw new Error(`package-surface: npm pack JSON in ${packageDirectory} must contain one package.`)
   }
-  const files = (parsed[0] as { files?: unknown }).files
+  const files = (packages[0] as { files?: unknown }).files
   if (!Array.isArray(files) || files.some((entry) => (
     !entry || typeof entry !== 'object' || typeof (entry as { path?: unknown }).path !== 'string'
   ))) {

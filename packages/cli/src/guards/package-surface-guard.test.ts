@@ -166,6 +166,16 @@ describe('package surface guard', () => {
     expect(output).toContain('[bin.tool]')
   })
 
+  it('reads npm 12 package-keyed pack output', () => {
+    expect(readPackedFiles('packages/example', () => ({
+      status: 0,
+      stdout: JSON.stringify({
+        example: { files: [{ path: 'dist/index.js' }] },
+      }),
+      stderr: '',
+    }))).toEqual(['dist/index.js'])
+  })
+
   it('rejects malformed npm output and npm command failures', async () => {
     expect(() => readPackedFiles('packages/example', () => ({
       status: 0,
@@ -199,6 +209,11 @@ describe('package surface guard', () => {
     expect(() => readPackedFiles('packages/example', () => ({
       status: 0,
       stdout: '[]',
+      stderr: '',
+    }))).toThrow('must contain one package')
+    expect(() => readPackedFiles('packages/example', () => ({
+      status: 0,
+      stdout: 'null',
       stderr: '',
     }))).toThrow('must contain one package')
   })

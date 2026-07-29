@@ -76,12 +76,7 @@ function collectFiles(rootDir: string, excludePatterns: RegExp[]): string[] {
 }
 
 function readCompilerOptions(tsconfigPath: string): ts.CompilerOptions {
-  let configResult: ReturnType<typeof ts.readConfigFile>
-  try {
-    configResult = ts.readConfigFile(tsconfigPath, ts.sys.readFile)
-  } catch (error) {
-    throw new Error(`Failed to read backend tsconfig: ${(error as Error).message}`)
-  }
+  const configResult = ts.readConfigFile(tsconfigPath, ts.sys.readFile)
   if (configResult.error) {
     const message = ts.flattenDiagnosticMessageText(configResult.error.messageText, '\n')
     throw new Error(`Failed to read backend tsconfig: ${message}`)

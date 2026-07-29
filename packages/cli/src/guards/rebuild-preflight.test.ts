@@ -196,7 +196,7 @@ describe('rebuild preflight reports', () => {
           targets: {
             api: {
               warningTitle: 'Rebuild API',
-              turboFilters: ['@acme/api'],
+              turboFilters: ['filter with spaces'],
               relevantBuildPackages: ['@acme/core'],
             },
           },
@@ -204,7 +204,8 @@ describe('rebuild preflight reports', () => {
       },
     }), 'utf8')
     const comSpec = process.env.ComSpec
-    delete process.env.ComSpec
+    vi.spyOn(process, 'platform', 'get').mockReturnValue('win32')
+    process.env.ComSpec = 'custom-cmd.exe'
     vi.mocked(spawnSync).mockReturnValue({
       pid: 1,
       output: [],
@@ -216,8 +217,23 @@ describe('rebuild preflight reports', () => {
 
     try {
       await expect(getRebuildPreflightReport({ repoRoot: root, target: 'api' })).resolves.toBeDefined()
+      expect(spawnSync).toHaveBeenCalledWith(
+        'custom-cmd.exe',
+        ['/d', '/s', '/c', 'pnpm turbo run build --dry=json \"--filter=filter with spaces\"'],
+        expect.any(Object),
+      )
+
+      vi.mocked(spawnSync).mockClear()
+      delete process.env.ComSpec
+      await expect(getRebuildPreflightReport({ repoRoot: root, target: 'api' })).resolves.toBeDefined()
+      expect(spawnSync).toHaveBeenCalledWith(
+        'cmd.exe',
+        ['/d', '/s', '/c', 'pnpm turbo run build --dry=json \"--filter=filter with spaces\"'],
+        expect.any(Object),
+      )
     } finally {
-      if (comSpec !== undefined) process.env.ComSpec = comSpec
+      if (comSpec === undefined) delete process.env.ComSpec
+      else process.env.ComSpec = comSpec
     }
   })
 })
