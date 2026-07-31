@@ -137,6 +137,11 @@ describe('config reference', () => {
           maxRawBytes: 500_000,
           required: true,
         }],
+        entryBudgets: [{
+          appDir: 'apps/web',
+          label: 'initial entrypoint',
+          maxBrotliBytes: 150_000,
+        }],
       },
       architectureMap: {
         includePaths: ['apps', 'packages', 'scripts'],

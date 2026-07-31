@@ -570,6 +570,13 @@ JSDoc, bundle audit, and upgrade engines:
         "maxRawBytes": 500000,
         "required": true
       }
+    ],
+    "entryBudgets": [
+      {
+        "appDir": "apps/frontend",
+        "label": "initial entrypoint",
+        "maxBrotliBytes": 150000
+      }
     ]
   },
   "upgrade": {
@@ -586,6 +593,11 @@ JSDoc, bundle audit, and upgrade engines:
   }
 }
 ```
+
+`entryBudgets` reads each app's built `dist/index.html`, deduplicates the local
+JavaScript and CSS referenced by scripts, stylesheets, and module preloads, and
+enforces their aggregate Brotli size. External URLs are ignored. A missing
+entrypoint or referenced local asset fails the audit.
 
 Dev and environment engines:
 

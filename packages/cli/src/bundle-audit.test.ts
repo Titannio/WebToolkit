@@ -110,6 +110,79 @@ describe('bundle audit', () => {
     await rm(temp, { recursive: true, force: true })
   })
 
+  it('enforces aggregate Brotli entrypoint budgets for local scripts and styles', async () => {
+    const temp = await mkdtemp(path.join(os.tmpdir(), 'webtoolkit-bundle-entry-budgets-'))
+    const dist = path.join(temp, 'apps', 'webapp', 'dist')
+    await mkdir(path.join(dist, 'assets'), { recursive: true })
+    await writeFile(path.join(dist, 'index.html'), [
+      '<script type="module" src="/assets/index.js"></script>',
+      '<script></script>',
+      '<link href="/assets/index.js" rel="modulepreload">',
+      '<link rel="stylesheet preload" href="./assets/styles.css?version=1">',
+      '<link rel="icon" href="/favicon.svg">',
+      '<link href="/without-rel.css">',
+      '<link rel="stylesheet">',
+      '<script src="https://cdn.example/vendor.js"></script>',
+      '<link rel="stylesheet" href="data:text/css,body{}">',
+      '<script src="/env-config.js#runtime"></script>',
+    ].join('\n'), 'utf8')
+    await writeFile(path.join(dist, 'assets', 'index.js'), 'const value = 1', 'utf8')
+    await writeFile(path.join(dist, 'assets', 'styles.css'), 'body { color: black }', 'utf8')
+    await writeFile(path.join(dist, 'env-config.js'), 'window.env = {}', 'utf8')
+
+    vi.spyOn(console, 'info').mockImplementation((message?: unknown) => {
+      logs.push(String(message))
+    })
+
+    runBundleAudit(runtimeWithConfig(temp, {
+      packageManager: 'pnpm',
+      bundleAudit: {
+        appDirs: ['apps/webapp'],
+        entryBudgets: [
+          { appDir: 'apps/webapp', label: 'passing entry', maxBrotliBytes: 1_000 },
+          { appDir: 'apps/webapp', label: 'failing entry', maxBrotliBytes: 0 },
+        ],
+      },
+    }), [])
+
+    expect(logs.some((line) => line.includes('Entrypoint budgets:'))).toBe(true)
+    expect(logs.some((line) => line.includes('PASS apps/webapp passing entry: 3 assets'))).toBe(true)
+    expect(logs.some((line) => line.includes('FAIL apps/webapp failing entry: 3 assets'))).toBe(true)
+    expect(logs.some((line) => line.includes('raw') && line.includes('gzip') && line.includes('brotli'))).toBe(true)
+    expect(process.exitCode).toBe(1)
+
+    await rm(temp, { recursive: true, force: true })
+  })
+
+  it('fails entrypoint budgets when index.html or a referenced local asset is missing', async () => {
+    const temp = await mkdtemp(path.join(os.tmpdir(), 'webtoolkit-bundle-entry-missing-'))
+    const dist = path.join(temp, 'apps', 'with-index', 'dist')
+    await mkdir(path.join(dist, 'assets'), { recursive: true })
+    await writeFile(path.join(dist, 'index.html'), '<script src="/assets/missing.js"></script>', 'utf8')
+
+    vi.spyOn(console, 'info').mockImplementation((message?: unknown) => {
+      logs.push(String(message))
+    })
+
+    runBundleAudit(runtimeWithConfig(temp, {
+      packageManager: 'pnpm',
+      bundleAudit: {
+        appDirs: ['apps/with-index', 'apps/without-index'],
+        entryBudgets: [
+          { appDir: 'apps/with-index', label: 'missing asset', maxBrotliBytes: 1_000 },
+          { appDir: 'apps/without-index', label: 'missing html', maxBrotliBytes: 1_000 },
+        ],
+      },
+    }), [])
+
+    expect(logs.some((line) => line.includes('MISSING apps/with-index missing asset'))).toBe(true)
+    expect(logs.some((line) => line.includes('assets/missing.js'))).toBe(true)
+    expect(logs.some((line) => line.includes('MISSING apps/without-index missing html'))).toBe(true)
+    expect(process.exitCode).toBe(1)
+
+    await rm(temp, { recursive: true, force: true })
+  })
+
   it('rejects bundle budgets for apps outside the audit scope', () => {
     expect(() => runBundleAudit(runtimeWithConfig('/tmp', {
       packageManager: 'pnpm',
@@ -123,6 +196,40 @@ describe('bundle audit', () => {
         }],
       },
     }), [])).toThrow('outside bundleAudit.appDirs')
+  })
+
+  it('rejects entrypoint budgets outside the audit scope and path traversal references', async () => {
+    expect(() => runBundleAudit(runtimeWithConfig('/tmp', {
+      packageManager: 'pnpm',
+      bundleAudit: {
+        appDirs: ['apps/webapp'],
+        entryBudgets: [{
+          appDir: 'apps/other',
+          label: 'other',
+          maxBrotliBytes: 10,
+        }],
+      },
+    }), [])).toThrow('outside bundleAudit.appDirs')
+
+    const temp = await mkdtemp(path.join(os.tmpdir(), 'webtoolkit-bundle-entry-traversal-'))
+    const dist = path.join(temp, 'apps', 'webapp', 'dist')
+    await mkdir(path.join(dist, 'assets'), { recursive: true })
+    await writeFile(path.join(dist, 'index.html'), '<script src="../outside.js"></script>', 'utf8')
+    await writeFile(path.join(temp, 'apps', 'webapp', 'outside.js'), 'unsafe', 'utf8')
+
+    expect(() => runBundleAudit(runtimeWithConfig(temp, {
+      packageManager: 'pnpm',
+      bundleAudit: {
+        appDirs: ['apps/webapp'],
+        entryBudgets: [{
+          appDir: 'apps/webapp',
+          label: 'entry',
+          maxBrotliBytes: 10,
+        }],
+      },
+    }), [])).toThrow('resolves outside')
+
+    await rm(temp, { recursive: true, force: true })
   })
 
   it('formats KiB and MiB sizes in the report', async () => {

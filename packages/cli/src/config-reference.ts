@@ -635,6 +635,20 @@ export const configSchema: JsonSchema = {
             },
           },
         },
+        entryBudgets: {
+          type: 'array',
+          description: 'Aggregate Brotli budgets for local JavaScript and CSS referenced by each built index.html.',
+          items: {
+            type: 'object',
+            required: ['appDir', 'label', 'maxBrotliBytes'],
+            additionalProperties: false,
+            properties: {
+              appDir: projectPath('Frontend app directory declared in bundleAudit.appDirs.'),
+              label: { type: 'string', minLength: 1 },
+              maxBrotliBytes: { type: 'integer', minimum: 0 },
+            },
+          },
+        },
       },
     },
     upgrade: {

@@ -299,11 +299,18 @@ export type BundleBudgetConfig = {
   required?: boolean
 }
 
+export type BundleEntryBudgetConfig = {
+  appDir: string
+  label: string
+  maxBrotliBytes: number
+}
+
 export type BundleAuditConfig = {
   appDirs: string[]
   top?: number
   rawWarningBytes?: number
   budgets?: BundleBudgetConfig[]
+  entryBudgets?: BundleEntryBudgetConfig[]
 }
 
 export type UpgradeConfig = {
