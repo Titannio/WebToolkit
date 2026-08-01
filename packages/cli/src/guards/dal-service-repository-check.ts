@@ -76,19 +76,26 @@ function collectFiles(rootDir: string, excludePatterns: RegExp[]): string[] {
 }
 
 function readCompilerOptions(tsconfigPath: string): ts.CompilerOptions {
-  const configResult = ts.readConfigFile(tsconfigPath, ts.sys.readFile)
-  if (configResult.error) {
-    const message = ts.flattenDiagnosticMessageText(configResult.error.messageText, '\n')
+  try {
+    const configResult = ts.readConfigFile(tsconfigPath, ts.sys.readFile)
+    if (configResult.error) throw configResult.error
+
+    const normalizedTsconfigPath = tsconfigPath.replace(/\\/gu, '/')
+    const parsed = ts.parseJsonConfigFileContent(
+      configResult.config,
+      ts.sys,
+      path.dirname(normalizedTsconfigPath),
+      undefined,
+      normalizedTsconfigPath,
+    )
+
+    return parsed.options
+  } catch (error) {
+    const message = error instanceof Error
+      ? error.message
+      : ts.flattenDiagnosticMessageText((error as ts.Diagnostic).messageText, '\n')
     throw new Error(`Failed to read backend tsconfig: ${message}`)
   }
-
-  const parsed = ts.parseJsonConfigFileContent(
-    configResult.config,
-    ts.sys,
-    path.dirname(tsconfigPath),
-  )
-
-  return parsed.options
 }
 
 function matchesPath(relativePath: string, configuredPath: string): boolean {

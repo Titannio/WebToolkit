@@ -177,17 +177,24 @@ function createSourceFile(filePath: string, content: string): ts.SourceFile {
 }
 
 function readParsedConfig(tsconfigPath: string): ts.ParsedCommandLine {
-  const configResult = ts.readConfigFile(tsconfigPath, ts.sys.readFile)
-  if (configResult.error) {
-    const message = ts.flattenDiagnosticMessageText(configResult.error.messageText, '\n')
+  try {
+    const configResult = ts.readConfigFile(tsconfigPath, ts.sys.readFile)
+    if (configResult.error) throw configResult.error
+
+    const normalizedTsconfigPath = tsconfigPath.replace(/\\/gu, '/')
+    return ts.parseJsonConfigFileContent(
+      configResult.config,
+      ts.sys,
+      path.dirname(normalizedTsconfigPath),
+      undefined,
+      normalizedTsconfigPath,
+    )
+  } catch (error) {
+    const message = error instanceof Error
+      ? error.message
+      : ts.flattenDiagnosticMessageText((error as ts.Diagnostic).messageText, '\n')
     throw new Error(`Failed to read backend tsconfig: ${message}`)
   }
-
-  return ts.parseJsonConfigFileContent(
-    configResult.config,
-    ts.sys,
-    path.dirname(tsconfigPath),
-  )
 }
 
 function resolveImportTarget(sourceFileName: string, moduleSpecifier: string, compilerOptions: ts.CompilerOptions): string | null {

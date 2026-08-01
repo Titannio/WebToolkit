@@ -1,5 +1,5 @@
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
-import { extname, join, relative, resolve } from 'node:path'
+import { extname, join, relative, resolve, sep } from 'node:path'
 import { brotliCompressSync, gzipSync } from 'node:zlib'
 
 import type { BundleBudgetConfig, BundleEntryBudgetConfig, WebToolkitCliConfig } from './config.js'
@@ -294,7 +294,7 @@ export function runBundleAudit(runtime: Runtime, rawArgs: string[]): void {
       const entry = entryStats.get(budget.appDir)!
       if (entry.missingFiles.length > 0) {
         console.info(colorize(
-          `- MISSING ${budget.appDir} ${budget.label}: ${entry.missingFiles.join(', ')}`,
+          `- MISSING ${budget.appDir} ${budget.label}: ${entry.missingFiles.map((filePath) => relative(rootDir, filePath).split(sep).join('/')).join(', ')}`,
           colors.red,
         ))
         hasBudgetFailure = true

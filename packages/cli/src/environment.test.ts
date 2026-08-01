@@ -127,9 +127,8 @@ describe('environment commands', () => {
 
     expect(info).toHaveBeenCalledWith(expect.stringContaining('Installing it via npm'))
     expect(spawnSync).toHaveBeenCalledWith(
-      expect.stringMatching(/npm(?:\.cmd)?$/u),
-      ['install', '--global', '--force', 'corepack'],
-      expect.any(Object),
+      expect.stringContaining('install --global --force corepack'),
+      expect.objectContaining({ shell: true }),
     )
     expect(info).toHaveBeenCalledWith('pnpm: 11.17.0')
   })
@@ -162,9 +161,8 @@ describe('environment commands', () => {
     runEnvBootstrap(runtime(root))
 
     expect(spawnSync).toHaveBeenCalledWith(
-      expect.any(String),
-      ['prepare', packageManager, '--activate'],
-      expect.any(Object),
+      expect.stringContaining(`prepare \"${packageManager}\" --activate`),
+      expect.objectContaining({ shell: true }),
     )
   })
 
@@ -189,7 +187,7 @@ describe('environment commands', () => {
 
     prepareCorepackPnpm(runtime(root), root, '11.17.0')
 
-    expect(spawnSync).toHaveBeenCalledWith(expect.stringContaining('"C:/Program Files/nodejs/corepack.cmd"'), expect.objectContaining({
+    expect(spawnSync).toHaveBeenCalledWith(expect.stringContaining('"C:\\Program Files\\nodejs\\corepack.cmd"'), expect.objectContaining({
       shell: true,
     }))
   })

@@ -959,11 +959,6 @@ export async function runUpgradeEngine(runtime: Runtime, rawArgs: string[]): Pro
     protectedHoldEntries = protectedHoldEntries.filter((entry) => !selected.has(entry.packageName))
   }
 
-  addSkippedEntries(skippedEntriesByKey, protectedHoldEntries.map((entry) => ({
-    ...entry,
-    reason: 'protected-singleton',
-  })))
-
   console.info('')
   console.info(colorize('Upgrade complete', `${colors.bright}${colors.green}`))
   if (regularEntries.length === 0 && protectedUpgradedEntries.length === 0) {
