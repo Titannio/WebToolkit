@@ -83,7 +83,7 @@ function printEngineHelp(command: string): void {
       'Analyzes configured TypeScript paths for JSDoc coverage.',
     ],
     upgrade: [
-      'Usage: webtoolkit upgrade [--yes] [--major] [--no-cooldown] [--days=N] [--isolated] [--verbose]',
+      'Usage: webtoolkit upgrade [--yes] [--types=major,minor,patch|all] [--major|--latest] [--no-cooldown] [--days=N] [--isolated] [--dry-run] [--verbose]',
       'Runs configured dependency upgrade workflow.',
     ],
     'performance-bundle-audit': [

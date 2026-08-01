@@ -374,7 +374,10 @@ Upgrade fields:
 - `protectedOverridesFile`: project-relative YAML file with top-level `overrides`, usually `pnpm-workspace.yaml`.
 - `protectedDependencyUpstreamHints`: map of protected package names to upstream packages that should be reviewed before isolated upgrades.
 - `singletonGuardCommand`: optional task step run after protected singleton upgrades.
-- The final upgrade summary reports packages that were not updated and groups them by the deciding filter, such as `Cooldown`, `Major`, or `Protected singleton`.
+- Interactive terminals use arrow keys, Space, and Enter to select update types and cooldowns. The default is minor and patch updates; protected singleton upgrades default to `Yes`. Choosing Major opens a separate package selector with nothing preselected, including from `All`. After the initial report, cooldown-held packages appear once in a distinct exception list with their update type and affected workspaces; each choice applies to every affected workspace.
+- `--types=major,minor,patch` selects exact SemVer categories, `--types=all` selects every category, and `--major`/`--latest` remain compatibility aliases for all categories. With `--yes`, those major flags explicitly authorize unattended major updates.
+- `--dry-run` renders the preview without changing manifests, overrides, or lockfiles. Interactive dry runs also walk through cooldown exceptions and show their resulting preview before exiting; `--yes` remains unattended.
+- Upgrade previews and final reports group major, minor, and patch changes separately. Repeated package, change, and release values are shown once per consecutive workspace group. After choosing one or more cooldown exceptions, the final output lists only applied updates.
 
 Dev watch fields:
 

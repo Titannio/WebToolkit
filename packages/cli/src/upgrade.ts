@@ -1,8 +1,10 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
-import { createInterface } from 'node:readline/promises'
 import { stdin as input, stdout as output } from 'node:process'
+
+import * as prompts from '@clack/prompts'
+import semver from 'semver'
 
 import type { TaskStepConfig, WebToolkitCliConfig } from './config.js'
 import { assertExactPnpmVersion, prepareCorepackPnpm } from './environment.js'
@@ -14,15 +16,18 @@ type Runtime = {
 }
 
 type TargetMode = 'minor' | 'latest'
+type UpgradeType = 'major' | 'minor' | 'patch'
 type WorkspaceUpdates = Record<string, Record<string, string>>
 type ManifestVersionMap = Record<string, string>
 type ManifestVersionsByFile = Record<string, ManifestVersionMap>
 
 type UpgradeOptions = {
-  allowMajor: boolean
+  types: UpgradeType[]
   verbose: boolean
   alignProtectedSingletons: boolean
   days: number
+  dryRun: boolean
+  interactive: boolean
 }
 
 type UpgradeEntry = {
@@ -32,8 +37,17 @@ type UpgradeEntry = {
   targetVersion: string
 }
 
-type SkippedUpgradeReason = 'cooldown' | 'major' | 'protected-singleton'
-type SkippedUpgradeEntry = UpgradeEntry & {
+type ClassifiedUpgradeEntry = Omit<UpgradeEntry, 'currentVersion'> & {
+  currentVersion: string
+  type: UpgradeType
+}
+
+type ReportEntry = ClassifiedUpgradeEntry & {
+  releaseDate: Date | null
+}
+
+type SkippedUpgradeReason = 'cooldown' | 'not-selected' | 'protected-singleton'
+type SkippedUpgradeEntry = ReportEntry & {
   reason: SkippedUpgradeReason
 }
 
@@ -55,15 +69,17 @@ const colors = {
 }
 
 const manifestVersionFields = ['dependencies', 'devDependencies', 'peerDependencies', 'optionalDependencies'] as const
-const skippedReasonOrder: SkippedUpgradeReason[] = ['cooldown', 'major', 'protected-singleton']
+const upgradeTypes: UpgradeType[] = ['major', 'minor', 'patch']
+const cooldownPresets = [0, 3, 7, 14, 30]
+const skippedReasonOrder: SkippedUpgradeReason[] = ['cooldown', 'not-selected', 'protected-singleton']
 const skippedReasonLabels: Record<SkippedUpgradeReason, string> = {
   cooldown: 'Cooldown',
-  major: 'Major',
+  'not-selected': 'Not selected',
   'protected-singleton': 'Protected singleton',
 }
 const skippedReasonPriority: Record<SkippedUpgradeReason, number> = {
   cooldown: 0,
-  major: 1,
+  'not-selected': 1,
   'protected-singleton': 2,
 }
 
@@ -290,30 +306,8 @@ function buildUpgradeEntries(
   return entries
 }
 
-function buildSkippedUpgradeEntries(
-  updatesByFile: WorkspaceUpdates,
-  reason: SkippedUpgradeReason,
-  resolveCurrentVersion: (filePath: string, packageName: string, targetVersion: string) => string | null,
-): SkippedUpgradeEntry[] {
-  return buildUpgradeEntries(updatesByFile, resolveCurrentVersion).map((entry) => ({
-    ...entry,
-    reason,
-  }))
-}
-
 function getUpgradeEntryKey(filePath: string, packageName: string): string {
   return `${filePath}::${packageName}`
-}
-
-function filterWorkspaceUpdatesByPackageNames(updatesByFile: WorkspaceUpdates, packageNames: Set<string>): WorkspaceUpdates {
-  return sortUpdatesByFile(Object.fromEntries(
-    Object.entries(updatesByFile)
-      .map(([filePath, updates]) => [
-        filePath,
-        Object.fromEntries(Object.entries(updates).filter(([packageName]) => packageNames.has(packageName))),
-      ])
-      .filter(([, updates]) => Object.keys(updates).length > 0),
-  ) as WorkspaceUpdates)
 }
 
 export function subtractWorkspaceUpdates(minuend: WorkspaceUpdates, subtrahend: WorkspaceUpdates): WorkspaceUpdates {
@@ -337,6 +331,27 @@ export function addSkippedEntries(target: Map<string, SkippedUpgradeEntry>, entr
       target.set(key, entry)
     }
   }
+}
+
+export function getUpgradeType(currentVersion: string | null, targetVersion: string): UpgradeType | null {
+  if (!currentVersion) return null
+
+  const current = semver.parse(normalizeVersionSpec(currentVersion))
+  const target = semver.parse(normalizeVersionSpec(targetVersion))
+  if (!current || !target) return null
+
+  const difference = semver.diff(current, target)
+  if (difference === 'major' || difference === 'premajor') return 'major'
+  if (difference === 'minor' || difference === 'preminor') return 'minor'
+  if (difference === 'patch' || difference === 'prepatch' || difference === 'prerelease') return 'patch'
+  return null
+}
+
+export function classifyUpgradeEntries(entries: UpgradeEntry[]): ClassifiedUpgradeEntry[] {
+  return entries.flatMap((entry) => {
+    const type = getUpgradeType(entry.currentVersion, entry.targetVersion)
+    return type && entry.currentVersion ? [{ ...entry, currentVersion: entry.currentVersion, type }] : []
+  })
 }
 
 export function readProtectedOverrides(rootDir: string, relativeFilePath: string): Record<string, string> {
@@ -427,37 +442,24 @@ function runInheritedPm(
   }
 }
 
-async function collectNcuUpdates(runtime: Runtime, target: TargetMode, rejectList: string[], includeProtected: boolean): Promise<WorkspaceUpdates> {
-  const protectedNames = getProtectedDependencyNames(runtime)
-  const mergedRejectList = includeProtected ? rejectList : mergeRejectLists(rejectList, protectedNames)
+async function collectNcuUpdates(runtime: Runtime, target: TargetMode): Promise<WorkspaceUpdates> {
   const args = ['exec', 'ncu', '--jsonUpgraded', '--workspaces', '--root', '--target', target]
-  if (mergedRejectList.length > 0) args.push('--reject', mergedRejectList.join(','))
 
   const result = await runBufferedPm(runtime, args)
   return normalizeNcuJson(result.output)
 }
 
-async function collectOutdatedUpdates(runtime: Runtime, target: TargetMode, rejectList: string[], includeProtected: boolean): Promise<WorkspaceUpdates> {
-  const protectedNames = getProtectedDependencyNames(runtime)
-  const mergedRejectList = new Set(includeProtected ? rejectList : mergeRejectLists(rejectList, protectedNames))
+async function collectOutdatedUpdates(runtime: Runtime, target: TargetMode): Promise<WorkspaceUpdates> {
   const result = await runBufferedPm(runtime, ['outdated', '--format', 'json', '--recursive'], false)
   if (result.code !== 0 && result.code !== 1) {
     throw new Error(`Command failed: pnpm outdated --format json --recursive\n${result.output}`)
   }
 
   const rawUpdates = normalizePnpmOutdatedJson(result.output, runtime.cwd, target)
-  const filteredUpdates = Object.fromEntries(
-    Object.entries(rawUpdates)
-      .map(([filePath, updates]) => [
-        filePath,
-        Object.fromEntries(Object.entries(updates).filter(([packageName]) => !mergedRejectList.has(packageName))),
-      ])
-      .filter(([, updates]) => Object.keys(updates).length > 0),
-  ) as WorkspaceUpdates
-  const versionsByFile = await getManifestVersionsByFile(filteredUpdates, runtime.cwd)
+  const versionsByFile = await getManifestVersionsByFile(rawUpdates, runtime.cwd)
 
   return sortUpdatesByFile(Object.fromEntries(
-    Object.entries(filteredUpdates).map(([filePath, updates]) => [
+    Object.entries(rawUpdates).map(([filePath, updates]) => [
       filePath,
       Object.fromEntries(
         Object.entries(updates).map(([packageName, targetVersion]) => [
@@ -469,27 +471,13 @@ async function collectOutdatedUpdates(runtime: Runtime, target: TargetMode, reje
   ) as WorkspaceUpdates)
 }
 
-async function collectUpgradeCandidates(runtime: Runtime, target: TargetMode, rejectList: string[], includeProtected = false): Promise<WorkspaceUpdates> {
+async function collectUpgradeCandidates(runtime: Runtime, target: TargetMode): Promise<WorkspaceUpdates> {
   const [outdatedUpdates, ncuUpdates] = await Promise.all([
-    collectOutdatedUpdates(runtime, target, rejectList, includeProtected),
-    collectNcuUpdates(runtime, target, rejectList, includeProtected),
+    collectOutdatedUpdates(runtime, target),
+    collectNcuUpdates(runtime, target),
   ])
 
   return mergeWorkspaceUpdates(outdatedUpdates, ncuUpdates)
-}
-
-async function collectProtectedHoldUpdates(runtime: Runtime, target: TargetMode, rejectList: string[] = []): Promise<WorkspaceUpdates> {
-  const protectedNames = new Set(getProtectedDependencyNames(runtime))
-  const allCandidates = await collectUpgradeCandidates(runtime, target, rejectList, true)
-
-  return sortUpdatesByFile(Object.fromEntries(
-    Object.entries(allCandidates)
-      .map(([filePath, updates]) => [
-        filePath,
-        Object.fromEntries(Object.entries(updates).filter(([packageName]) => protectedNames.has(packageName))),
-      ])
-      .filter(([, updates]) => Object.keys(updates).length > 0),
-  ) as WorkspaceUpdates)
 }
 
 export function deriveProtectedOverrideTargetVersion(currentOverride: string | null, normalizedTargetVersion: string): string {
@@ -546,63 +534,143 @@ export async function getReleaseDate(runtime: Runtime, packageName: string, vers
   }
 }
 
-async function getCooldownRejectList(runtime: Runtime, days: number, target: TargetMode): Promise<string[]> {
-  if (days <= 0) return []
-
-  try {
-    console.info(colorize(`Checking release age for ${target} updates (${days}-day cooldown)...`, colors.cyan))
-    const candidatesByFile = await collectUpgradeCandidates(runtime, target, [], true)
-    const allCandidates = new Map<string, string>()
-
-    for (const fileUpdates of Object.values(candidatesByFile)) {
-      for (const [packageName, targetVersion] of Object.entries(fileUpdates)) {
-        allCandidates.set(packageName, targetVersion)
-      }
-    }
-
-    const rejectList: string[] = []
-    let processed = 0
-    const candidates = Array.from(allCandidates.entries())
-
-    for (const [packageName, targetVersion] of candidates) {
-      const releaseDate = await getReleaseDate(runtime, packageName, normalizeVersionSpec(targetVersion))
-      processed += 1
-      process.stdout.write(`\rCooldown ${processed}/${candidates.length}`)
-      if (!releaseDate) {
-        rejectList.push(packageName)
-        console.warn(colorize(`\nCooldown hold: ${packageName} has unknown release age.`, colors.yellow))
-        continue
-      }
-
-      const ageInDays = (Date.now() - releaseDate.getTime()) / (1000 * 60 * 60 * 24)
-      if (ageInDays < days) rejectList.push(packageName)
-    }
-
-    if (candidates.length > 0) console.info('')
-    return rejectList.sort((left, right) => left.localeCompare(right))
-  } catch (error) {
-    throw new Error(`Cooldown pre-check failed before manifests were changed. ${(error as Error).message} Rerun with --no-cooldown to bypass release-age checks explicitly.`)
-  }
+function releaseDateKey(entry: UpgradeEntry): string {
+  return `${entry.packageName}@${normalizeVersionSpec(entry.targetVersion)}`
 }
 
-function formatEntryGroups(entries: UpgradeEntry[]): string[] {
-  const byFile = new Map<string, UpgradeEntry[]>()
+async function resolveReleaseDates(
+  runtime: Runtime,
+  entries: ClassifiedUpgradeEntry[],
+  cache: Map<string, Date | null>,
+  required: boolean,
+): Promise<Map<string, Date | null>> {
+  const unresolved = new Map<string, ClassifiedUpgradeEntry>()
   for (const entry of entries) {
-    const list = byFile.get(entry.filePath) ?? []
-    list.push(entry)
-    byFile.set(entry.filePath, list)
+    const key = releaseDateKey(entry)
+    if (!cache.has(key)) unresolved.set(key, entry)
   }
 
-  return Array.from(byFile.entries()).flatMap(([filePath, fileEntries]) => [
-    colorize(filePath, colors.cyan),
-    ...fileEntries.map((entry) => `  ${entry.packageName}: ${entry.currentVersion ?? '?'} -> ${entry.targetVersion}`),
-  ])
+  for (const [key, entry] of unresolved) {
+    try {
+      cache.set(key, await getReleaseDate(runtime, entry.packageName, normalizeVersionSpec(entry.targetVersion)))
+    } catch (error) {
+      if (required) {
+        throw new Error(`Cooldown pre-check failed before manifests were changed. ${(error as Error).message} Rerun with --no-cooldown to bypass release-age checks explicitly.`)
+      }
+      cache.set(key, null)
+      console.warn(colorize(`Release date unavailable: ${entry.packageName}.`, colors.yellow))
+    }
+  }
+
+  return cache
 }
 
-async function applyWorkspaceUpgrades(runtime: Runtime, target: TargetMode, rejectList: string[] = [], filterPackages: string[] = []): Promise<void> {
+function toReportEntries(entries: ClassifiedUpgradeEntry[], releaseDates: Map<string, Date | null>): ReportEntry[] {
+  return entries.map((entry) => ({ ...entry, releaseDate: releaseDates.get(releaseDateKey(entry)) ?? null }))
+}
+
+function getCooldownHoldPackageNames(entries: ReportEntry[], days: number): Set<string> {
+  if (days <= 0) return new Set()
+
+  return new Set(entries.flatMap((entry) => {
+    if (!entry.releaseDate) {
+      console.warn(colorize(`Cooldown hold: ${entry.packageName} has unknown release age.`, colors.yellow))
+      return [entry.packageName]
+    }
+    return (Date.now() - entry.releaseDate.getTime()) / (1000 * 60 * 60 * 24) < days ? [entry.packageName] : []
+  }))
+}
+
+function formatReleaseAge(releaseDate: Date): string {
+  return `${Math.max(0, Math.floor((Date.now() - releaseDate.getTime()) / (1000 * 60 * 60 * 24)))} days ago`
+}
+
+function visibleLength(value: string): number {
+  return value.replace(/\x1B\[[0-9;?]*[ -/]*[@-~]/gu, '').length
+}
+
+function getWorkspaceName(filePath: string): string {
+  return filePath === 'package.json' ? 'root' : path.basename(path.dirname(filePath))
+}
+
+function formatUpgradeTable(entries: ReportEntry[]): string {
+  const headers = ['Package', 'Workspace', 'Change', 'Released']
+  const rows = entries
+    .sort((left, right) => (left.releaseDate?.getTime() ?? Number.POSITIVE_INFINITY) - (right.releaseDate?.getTime() ?? Number.POSITIVE_INFINITY)
+      || `${left.packageName}\0${left.filePath}`.localeCompare(`${right.packageName}\0${right.filePath}`))
+    .map((entry) => [
+      entry.packageName,
+      getWorkspaceName(entry.filePath),
+      `${entry.currentVersion} -> ${entry.targetVersion}`,
+      entry.releaseDate ? `${entry.releaseDate.toISOString().slice(0, 10)} (${formatReleaseAge(entry.releaseDate)})` : 'Unknown',
+    ])
+  const compactRows = rows.map((cells, index) => index > 0 && [0, 2, 3].every((cellIndex) => cells[cellIndex] === rows[index - 1][cellIndex])
+    ? ['', cells[1], '', '']
+    : cells)
+  const widths = headers.map((header, index) => Math.max(header.length, ...compactRows.map((row) => visibleLength(row[index]))))
+  const separator = `+${widths.map((width) => '-'.repeat(width + 2)).join('+')}+`
+  const row = (cells: string[]): string => `| ${cells.map((cell, index) => `${cell}${' '.repeat(widths[index] - visibleLength(cell))}`).join(' | ')} |`
+
+  return [separator, row(headers), separator, ...compactRows.map(row), separator].join('\n')
+}
+
+function printEntryGroups(title: string, entries: ReportEntry[]): void {
+  if (entries.length === 0) return
+  console.info('')
+  console.info(colorize(title, colors.bright))
+  for (const type of upgradeTypes) {
+    const group = entries.filter((entry) => entry.type === type)
+    if (group.length === 0) continue
+    console.info(colorize(type[0].toUpperCase() + type.slice(1), colors.cyan))
+    console.info(formatUpgradeTable(group))
+  }
+}
+
+function getHighestUpgradeType(entries: Pick<ClassifiedUpgradeEntry, 'type'>[]): UpgradeType {
+  return upgradeTypes[Math.min(...entries.map((entry) => upgradeTypes.indexOf(entry.type)))]!
+}
+
+function getPackageSelectionOptions(entries: ClassifiedUpgradeEntry[]): { value: string, label: string, hint: string }[] {
+  const entriesByPackage = new Map<string, ClassifiedUpgradeEntry[]>()
+  for (const entry of entries) {
+    const packageEntries = entriesByPackage.get(entry.packageName) ?? []
+    packageEntries.push(entry)
+    entriesByPackage.set(entry.packageName, packageEntries)
+  }
+
+  return Array.from(entriesByPackage.entries())
+    .map(([packageName, packageEntries]) => ({ packageName, packageEntries, type: getHighestUpgradeType(packageEntries) }))
+    .sort((left, right) => upgradeTypes.indexOf(left.type) - upgradeTypes.indexOf(right.type) || left.packageName.localeCompare(right.packageName))
+    .map(({ packageName, packageEntries, type }) => ({
+      value: packageName,
+      label: packageName,
+      hint: `${type[0].toUpperCase() + type.slice(1)} - Workspaces: ${uniqueSorted(packageEntries.map((entry) => getWorkspaceName(entry.filePath))).join(', ')}`,
+    }))
+}
+
+async function selectCooldownExceptionPackageNames(entries: ReportEntry[]): Promise<Set<string> | null> {
+  const options = getPackageSelectionOptions(entries)
+  const selected = await prompts.multiselect({
+    message: 'Select cooldown exceptions',
+    options,
+    required: false,
+  })
+  return isCancelled(selected) ? null : new Set(selected)
+}
+
+async function selectMajorPackageNames(entries: ClassifiedUpgradeEntry[]): Promise<Set<string> | null> {
+  const selected = await prompts.multiselect({
+    message: 'Select major updates',
+    options: getPackageSelectionOptions(entries),
+    required: false,
+  })
+  return isCancelled(selected) ? null : new Set(selected)
+}
+
+async function applyWorkspaceUpgrades(runtime: Runtime, target: TargetMode, rejectList: string[], filterPackages: string[]): Promise<void> {
   const args = ['exec', 'ncu', '--workspaces', '--root', '--color', '-u', '--target', target]
   if (rejectList.length > 0) args.push('--reject', rejectList.join(','))
-  if (filterPackages.length > 0) args.push('--filter', filterPackages.join(','))
+  args.push('--filter', filterPackages.join(','))
   runInheritedPm(runtime, args)
 }
 
@@ -643,103 +711,196 @@ export function runConfiguredStep(runtime: Runtime, step: TaskStepConfig): void 
   if (code !== 0) process.exit(code)
 }
 
+export function parseUpgradeTypes(value: string): UpgradeType[] {
+  if (value === 'all') return [...upgradeTypes]
+  const values = value.split(',').map((item) => item.trim()).filter(Boolean)
+  if (values.length === 0 || new Set(values).size !== values.length || values.some((item) => !upgradeTypes.includes(item as UpgradeType))) {
+    throw new Error('Invalid --types value. Use major,minor,patch or all.')
+  }
+  return uniqueSorted(values) as UpgradeType[]
+}
+
 export function parseCliArgs(runtime: Runtime, rawArgs: string[]): UpgradeOptions {
   const verbose = rawArgs.includes('--verbose')
   const daysArg = rawArgs.find((arg) => arg.startsWith('--days='))
+  const typesArg = rawArgs.find((arg) => arg.startsWith('--types='))
   const defaultDays = runtime.config.upgrade?.defaultCooldownDays ?? 7
   const days = daysArg
     ? Number.parseInt(daysArg.slice('--days='.length), 10)
     : rawArgs.includes('--no-cooldown') ? 0 : defaultDays
 
   return {
-    allowMajor: rawArgs.includes('--major') || rawArgs.includes('--latest'),
+    types: typesArg ? parseUpgradeTypes(typesArg.slice('--types='.length)) : rawArgs.includes('--major') || rawArgs.includes('--latest') ? [...upgradeTypes] : ['minor', 'patch'],
     verbose,
     alignProtectedSingletons: rawArgs.includes('--isolated') || rawArgs.includes('--align-protected-singletons'),
     days: Number.isFinite(days) && days > 0 ? days : 0,
+    dryRun: rawArgs.includes('--dry-run'),
+    interactive: false,
   }
 }
 
-export function parseYesNo(answer: string, defaultValue: boolean): boolean | null {
-  const normalized = answer.trim().toLowerCase()
-  if (!normalized) return defaultValue
-  if (['y', 'yes'].includes(normalized)) return true
-  if (['n', 'no'].includes(normalized)) return false
-  return null
+function isCancelled(value: unknown): value is symbol {
+  return prompts.isCancel(value)
 }
 
-export function formatYesNoPrompt(icon: string, question: string, defaultValue: boolean): string {
-  return `${icon} ${question} ${defaultValue ? '[Y/n]' : '[y/N]'} `
+function getScopeInitialValue(types: UpgradeType[]): 'recommended' | 'all' | 'custom' {
+  if (types.length === upgradeTypes.length) return 'all'
+  if (types.length === 2 && types.includes('minor') && types.includes('patch')) return 'recommended'
+  return 'custom'
 }
 
-async function promptYesNo(prompt: ReturnType<typeof createInterface>, question: string, defaultValue: boolean): Promise<boolean> {
-  while (true) {
-    const parsed = parseYesNo(await prompt.question(question), defaultValue)
-    if (parsed !== null) return parsed
-    console.info(colorize('Invalid answer. Use Y or N.', colors.yellow))
-  }
-}
-
-export async function resolveOptions(runtime: Runtime, rawArgs: string[]): Promise<UpgradeOptions> {
+export async function resolveOptions(runtime: Runtime, rawArgs: string[]): Promise<UpgradeOptions | null> {
   const cliOptions = parseCliArgs(runtime, rawArgs)
   if (rawArgs.includes('--yes') || !input.isTTY || !output.isTTY) return cliOptions
 
-  console.info(colorize('Upgrade configuration', colors.bright))
-  const prompt = createInterface({ input, output })
-  try {
-    const cooldownEnabled = await promptYesNo(prompt, formatYesNoPrompt('❄', 'Cooldown enabled?', cliOptions.days > 0), cliOptions.days > 0)
-    const allowMajor = await promptYesNo(prompt, formatYesNoPrompt('↗', 'Major upgrades?', cliOptions.allowMajor), cliOptions.allowMajor)
-    const alignProtectedSingletons = await promptYesNo(prompt, formatYesNoPrompt('🔄', 'Protected singleton upgrades?', cliOptions.alignProtectedSingletons), cliOptions.alignProtectedSingletons)
-    return {
-      allowMajor,
-      verbose: cliOptions.verbose,
-      alignProtectedSingletons,
-      days: cooldownEnabled ? (cliOptions.days > 0 ? cliOptions.days : (runtime.config.upgrade?.defaultCooldownDays ?? 7)) : 0,
-    }
-  } finally {
-    prompt.close()
+  prompts.intro('Upgrade configuration')
+  const scope = await prompts.select({
+    message: 'Update scope',
+    initialValue: getScopeInitialValue(cliOptions.types),
+    options: [
+      { value: 'recommended', label: 'Recommended', hint: 'Minor and patch updates' },
+      { value: 'all', label: 'All', hint: 'Major, minor, and patch updates' },
+      { value: 'custom', label: 'Custom', hint: 'Choose update types' },
+    ],
+  })
+  if (isCancelled(scope)) return null
+
+  const selectedTypes = scope === 'recommended' ? ['minor', 'patch'] as UpgradeType[] : scope === 'all' ? [...upgradeTypes] : await prompts.multiselect({
+    message: 'Update types',
+    options: upgradeTypes.map((type) => ({ value: type, label: type[0].toUpperCase() + type.slice(1) })),
+    initialValues: cliOptions.types,
+    required: true,
+  })
+  if (isCancelled(selectedTypes)) return null
+
+  const cooldownOptions = cooldownPresets.map((days) => ({
+    value: days,
+    label: days === 0 ? 'Disabled' : `${days} days`,
+    hint: days === 0 ? 'Apply releases immediately' : undefined,
+  }))
+  if (!cooldownPresets.includes(cliOptions.days)) cooldownOptions.push({ value: cliOptions.days, label: `${cliOptions.days} days`, hint: 'Configured value' })
+  const days = await prompts.select({
+    message: 'Release cooldown',
+    options: cooldownOptions,
+    initialValue: cliOptions.days,
+  })
+  if (isCancelled(days)) return null
+
+  const alignProtectedSingletons = await prompts.confirm({
+    message: 'Upgrade protected singletons?',
+    initialValue: true,
+  })
+  if (isCancelled(alignProtectedSingletons)) return null
+
+  return {
+    ...cliOptions,
+    types: selectedTypes,
+    days,
+    alignProtectedSingletons,
+    interactive: true,
   }
 }
 
 export async function runUpgradeEngine(runtime: Runtime, rawArgs: string[]): Promise<void> {
   const options = await resolveOptions(runtime, rawArgs)
-  const target: TargetMode = options.allowMajor ? 'latest' : 'minor'
+  if (!options) {
+    prompts.cancel('Upgrade cancelled.')
+    return
+  }
+
   const protectedNames = getProtectedDependencyNames(runtime)
 
   console.info(colorize('Checking eligible dependency updates...', colors.cyan))
-  const cooldownRejectList = await getCooldownRejectList(runtime, options.days, target)
-  const currentTargetCandidates = await collectUpgradeCandidates(runtime, target, [], true)
-  const cooldownHoldUpdates = filterWorkspaceUpdatesByPackageNames(currentTargetCandidates, new Set(cooldownRejectList))
-  const cooldownHoldVersionsByFile = await getManifestVersionsByFile(cooldownHoldUpdates, runtime.cwd)
-  const skippedEntriesByKey = new Map<string, SkippedUpgradeEntry>()
-  addSkippedEntries(skippedEntriesByKey, buildSkippedUpgradeEntries(
-    cooldownHoldUpdates,
-    'cooldown',
-    (filePath, packageName) => cooldownHoldVersionsByFile[filePath]?.[packageName] ?? null,
+  const allCandidates = await collectUpgradeCandidates(runtime, 'latest')
+  const versionsByFile = await getManifestVersionsByFile(allCandidates, runtime.cwd)
+  const classifiedEntries = classifyUpgradeEntries(buildUpgradeEntries(
+    allCandidates,
+    (filePath, packageName) => versionsByFile[filePath]?.[packageName] ?? null,
   ))
+  const selectedTypeSet = new Set(options.types)
+  const majorEntries = classifiedEntries.filter((entry) => entry.type === 'major')
+  let selectedMajorPackageNames: Set<string> | null = null
+  if (options.interactive && selectedTypeSet.has('major') && majorEntries.length > 0) {
+    selectedMajorPackageNames = await selectMajorPackageNames(majorEntries)
+    if (!selectedMajorPackageNames) {
+      prompts.cancel('Upgrade cancelled.')
+      return
+    }
+  }
+  const selectedEntries = classifiedEntries.filter((entry) => selectedTypeSet.has(entry.type)
+    && (entry.type !== 'major' || !selectedMajorPackageNames || selectedMajorPackageNames.has(entry.packageName)))
+  const notSelectedEntries = classifiedEntries.filter((entry) => !selectedEntries.includes(entry))
+  const releaseDates = new Map<string, Date | null>()
 
-  if (!options.allowMajor) {
-    const latestCandidates = await collectUpgradeCandidates(runtime, 'latest', [], true)
-    const majorHoldUpdates = subtractWorkspaceUpdates(latestCandidates, currentTargetCandidates)
-    const majorHoldVersionsByFile = await getManifestVersionsByFile(majorHoldUpdates, runtime.cwd)
-    addSkippedEntries(skippedEntriesByKey, buildSkippedUpgradeEntries(
-      majorHoldUpdates,
-      'major',
-      (filePath, packageName) => majorHoldVersionsByFile[filePath]?.[packageName] ?? null,
-    ))
+  if (options.days > 0) {
+    console.info(colorize(`Checking release age (${options.days}-day cooldown)...`, colors.cyan))
+    await resolveReleaseDates(runtime, selectedEntries, releaseDates, true)
+  }
+  await resolveReleaseDates(runtime, classifiedEntries, releaseDates, false)
+
+  const selectedReportEntries = toReportEntries(selectedEntries, releaseDates)
+  const notSelectedReportEntries = toReportEntries(notSelectedEntries, releaseDates)
+  const cooldownHoldPackageNames = getCooldownHoldPackageNames(selectedReportEntries, options.days)
+  const cooldownHoldEntries = selectedReportEntries.filter((entry) => cooldownHoldPackageNames.has(entry.packageName))
+  const protectedEntryNames = new Set(protectedNames)
+  let cooldownRejectList = new Set(cooldownHoldPackageNames)
+  let eligibleEntries = selectedReportEntries.filter((entry) => !cooldownRejectList.has(entry.packageName))
+  let regularEntries = eligibleEntries.filter((entry) => !protectedEntryNames.has(entry.packageName))
+  let protectedHoldEntries = eligibleEntries.filter((entry) => protectedEntryNames.has(entry.packageName))
+  let protectedUpgradedEntries: ReportEntry[] = []
+  let skippedEntriesByKey = new Map<string, SkippedUpgradeEntry>()
+
+  const refreshSkippedEntries = (): void => {
+    skippedEntriesByKey = new Map<string, SkippedUpgradeEntry>()
+    addSkippedEntries(skippedEntriesByKey, selectedReportEntries.filter((entry) => cooldownRejectList.has(entry.packageName)).map((entry) => ({ ...entry, reason: 'cooldown' })))
+    addSkippedEntries(skippedEntriesByKey, notSelectedReportEntries.map((entry) => ({ ...entry, reason: 'not-selected' })))
+  }
+  refreshSkippedEntries()
+
+  printEntryGroups('Preview: eligible updates', regularEntries)
+  printEntryGroups('Preview: protected singleton updates', protectedHoldEntries)
+  const previewSkippedEntries = Array.from(skippedEntriesByKey.values())
+  for (const reason of skippedReasonOrder) {
+    if (options.interactive && cooldownHoldEntries.length > 0 && reason === 'cooldown') continue
+    printEntryGroups(`Preview: ${skippedReasonLabels[reason]}`, previewSkippedEntries.filter((entry) => entry.reason === reason))
   }
 
-  const upgradeCandidates = await collectUpgradeCandidates(runtime, target, cooldownRejectList)
-  const versionsByFile = await getManifestVersionsByFile(upgradeCandidates, runtime.cwd)
-  const updatedEntries = buildUpgradeEntries(upgradeCandidates, (filePath, packageName) => versionsByFile[filePath]?.[packageName] ?? null)
-  const protectedHoldUpdates = await collectProtectedHoldUpdates(runtime, target, cooldownRejectList)
-  const protectedHoldVersionsByFile = await getManifestVersionsByFile(protectedHoldUpdates, runtime.cwd)
-  let protectedHoldEntries = buildUpgradeEntries(protectedHoldUpdates, (filePath, packageName) => protectedHoldVersionsByFile[filePath]?.[packageName] ?? null)
-  let protectedUpgradedEntries: UpgradeEntry[] = []
+  let selectedCooldownExceptions = false
+  if (options.interactive && cooldownHoldEntries.length > 0) {
+    const selectedCooldownExceptionPackageNames = await selectCooldownExceptionPackageNames(cooldownHoldEntries)
+    if (!selectedCooldownExceptionPackageNames) {
+      prompts.cancel('Upgrade cancelled.')
+      return
+    }
 
-  if (updatedEntries.length > 0) {
+    selectedCooldownExceptions = selectedCooldownExceptionPackageNames.size > 0
+    cooldownRejectList = new Set(Array.from(cooldownHoldPackageNames).filter((packageName) => !selectedCooldownExceptionPackageNames.has(packageName)))
+    eligibleEntries = selectedReportEntries.filter((entry) => !cooldownRejectList.has(entry.packageName))
+    regularEntries = eligibleEntries.filter((entry) => !protectedEntryNames.has(entry.packageName))
+    protectedHoldEntries = eligibleEntries.filter((entry) => protectedEntryNames.has(entry.packageName))
+    refreshSkippedEntries()
+
+    printEntryGroups('Final review: updates to apply', regularEntries)
+    if (options.alignProtectedSingletons) printEntryGroups('Final review: protected singleton upgrades', protectedHoldEntries)
+  }
+
+  if (options.dryRun) {
+    prompts.outro('Dry run complete. No files changed.')
+    return
+  }
+
+  if (options.interactive) {
+    const confirmed = await prompts.confirm({ message: 'Apply these upgrades?', initialValue: true })
+    if (isCancelled(confirmed) || !confirmed) {
+      prompts.cancel('Upgrade cancelled.')
+      return
+    }
+  }
+
+  if (regularEntries.length > 0) {
     console.info(colorize('Applying dependency updates...', colors.cyan))
     const previousPnpmVersion = await readRootPnpmPackageManagerVersion(runtime.cwd)
-    await applyWorkspaceUpgrades(runtime, target, mergeRejectLists(cooldownRejectList, protectedNames))
+    await applyWorkspaceUpgrades(runtime, 'latest', mergeRejectLists(Array.from(cooldownRejectList), protectedNames), uniqueSorted(eligibleEntries.map((entry) => entry.packageName)))
     const useFreshPackageManager = await preparePackageManagerAfterManifestUpdates(runtime, previousPnpmVersion)
     console.info(colorize('Installing dependencies...', colors.cyan))
     await installDependencies(runtime, useFreshPackageManager)
@@ -752,7 +913,7 @@ export async function runUpgradeEngine(runtime: Runtime, rawArgs: string[]): Pro
 
     console.info(colorize('Applying protected singleton upgrades...', colors.cyan))
     const previousPnpmVersion = await readRootPnpmPackageManagerVersion(runtime.cwd)
-    await applyWorkspaceUpgrades(runtime, target, cooldownRejectList, selectedPackages)
+    await applyWorkspaceUpgrades(runtime, 'latest', Array.from(cooldownRejectList), selectedPackages)
     console.info(colorize('Updating protected dependency overrides...', colors.cyan))
     await updateProtectedOverrides(runtime.cwd, runtime.config.upgrade?.protectedOverridesFile ?? 'pnpm-workspace.yaml', overrideUpdates)
     const useFreshPackageManager = await preparePackageManagerAfterManifestUpdates(runtime, previousPnpmVersion)
@@ -775,15 +936,14 @@ export async function runUpgradeEngine(runtime: Runtime, rawArgs: string[]): Pro
 
   console.info('')
   console.info(colorize('Upgrade complete', `${colors.bright}${colors.green}`))
-  console.info('')
-  console.info(colorize('Updated', colors.bright))
-  if (updatedEntries.length === 0) {
+  if (regularEntries.length === 0 && protectedUpgradedEntries.length === 0) {
+    console.info('')
     console.info('- No eligible dependency updates.')
-  } else {
-    for (const line of formatEntryGroups(updatedEntries)) console.info(`- ${line}`)
   }
+  printEntryGroups('Updated', regularEntries)
+  printEntryGroups('Protected singleton upgrades', protectedUpgradedEntries)
 
-  const skippedEntries = Array.from(skippedEntriesByKey.values())
+  const skippedEntries = selectedCooldownExceptions || selectedMajorPackageNames?.size ? [] : Array.from(skippedEntriesByKey.values())
   if (skippedEntries.length > 0) {
     const hints = runtime.config.upgrade?.protectedDependencyUpstreamHints ?? {}
     console.info('')
@@ -793,8 +953,7 @@ export async function runUpgradeEngine(runtime: Runtime, rawArgs: string[]): Pro
       const reasonEntries = skippedEntries.filter((entry) => entry.reason === reason)
       if (reasonEntries.length === 0) continue
 
-      console.info(`- ${colorize(skippedReasonLabels[reason], colors.yellow)}`)
-      for (const line of formatEntryGroups(reasonEntries)) console.info(`  ${line}`)
+      printEntryGroups(`Not updated: ${skippedReasonLabels[reason]}`, reasonEntries)
 
       if (reason !== 'protected-singleton') continue
 
@@ -807,13 +966,7 @@ export async function runUpgradeEngine(runtime: Runtime, rawArgs: string[]): Pro
     }
   }
 
-  if (protectedUpgradedEntries.length > 0) {
-    console.info('')
-    console.info(colorize('Protected singleton upgrades', colors.bright))
-    for (const line of formatEntryGroups(protectedUpgradedEntries)) console.info(`- ${line}`)
-  }
-
   if (options.verbose) {
-    console.info(colorize(`Executed with target=${target}.`, colors.gray))
+    console.info(colorize(`Executed with types=${options.types.join(',')}.`, colors.gray))
   }
 }
