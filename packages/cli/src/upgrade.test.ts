@@ -125,7 +125,12 @@ describe('upgrade prompts', () => {
     expect(() => parseUpgradeTypes('major,unknown')).toThrow('Invalid --types')
     expect(() => parseUpgradeTypes('major,major')).toThrow('Invalid --types')
     expect(parseCliArgs(runtime, ['--no-cooldown'])).toMatchObject({ days: 0 })
-    expect(parseCliArgs(runtime, ['--days=invalid'])).toMatchObject({ days: 0 })
+    expect(() => parseCliArgs(runtime, ['--days=invalid'])).toThrow('Invalid --days value')
+    expect(() => parseCliArgs(runtime, ['--unexpected'])).toThrow('Unknown upgrade option')
+    expect(() => parseCliArgs(runtime, ['--days=3', '--days=7'])).toThrow('Use --days only once')
+    expect(() => parseCliArgs(runtime, ['--types=minor', '--types=patch'])).toThrow('Use --types only once')
+    expect(() => parseCliArgs(runtime, ['--days=3', '--no-cooldown'])).toThrow('either --days or --no-cooldown')
+    expect(() => parseCliArgs(runtime, ['--types=patch', '--major'])).toThrow('either --types or --major/--latest')
 
     Object.defineProperty(input, 'isTTY', { configurable: true, value: true })
     Object.defineProperty(output, 'isTTY', { configurable: true, value: true })
@@ -622,15 +627,17 @@ describe('upgrade cooldown', () => {
       .find((spec) => spec.args?.includes('ncu'))
     expect(updateCall?.args).toEqual(expect.arrayContaining(['--filter', 'major-dep', '--reject', 'minor-dep,mixed,patch-dep']))
     const reportOutput = stripAnsi(infoLines.join('\n'))
-    const finalReviewStart = reportOutput.lastIndexOf('Final review:')
+    const finalReviewStart = reportOutput.indexOf('Final review: updates to apply')
     const finalReview = reportOutput.slice(finalReviewStart, reportOutput.indexOf('Applying dependency updates...', finalReviewStart))
     expect(finalReview).toContain('Final review: updates to apply')
     expect(finalReview).toContain('major-dep | root')
-    expect(finalReview).not.toContain('minor-dep | root')
-    expect(finalReview).not.toContain('mixed |')
-    expect(finalReview).not.toContain('patch-dep | root')
-    expect(reportOutput).not.toContain('Preview: Cooldown')
-    expect(reportOutput).not.toContain('\nNot updated\n')
+    expect(finalReview).toContain('Final review: Cooldown')
+    expect(finalReview).toContain('minor-dep | root')
+    expect(finalReview).toContain('mixed     | core')
+    expect(finalReview).toContain('patch-dep | root')
+    expect(finalReview).toContain('Final review: Not selected')
+    expect(reportOutput).toContain('Preview: Cooldown')
+    expect(reportOutput).toContain('\nNot updated\n')
   })
 
   it('runs the cooldown selector in interactive dry runs without applying updates', async () => {
@@ -1139,13 +1146,13 @@ describe('upgrade cooldown', () => {
     expect(output).toContain('Cooldown')
     expect(output).toContain('Major')
     expect(output).toContain('Protected singleton')
-    expect(output).toContain('cooldown-dep     | root')
-    expect(output).toContain('protected-recent | root')
-    expect(output).toContain('protected-major | root')
-    expect(output).toContain('protected-hold | root')
+    expect(output).toMatch(/cooldown-dep\s+\| root/u)
+    expect(output).toMatch(/protected-recent\s+\| root/u)
+    expect(output).toMatch(/protected-major\s+\| root/u)
+    expect(output).toMatch(/protected-hold\s+\| root/u)
     expect(output).toContain('protected-hold: review/update shared-upstream before upgrading.')
-    expect(countMatches(output, 'protected-recent | root')).toBe(2)
-    expect(countMatches(output, 'protected-major | root')).toBe(2)
+    expect(countMatches(output, 'protected-recent')).toBe(2)
+    expect(countMatches(output, 'protected-major')).toBe(2)
   })
 })
 
@@ -1321,6 +1328,94 @@ describe('upgrade failure and empty paths', () => {
     }, ['--yes', '--no-cooldown', '--major', '--isolated'])
 
     expect(readProtectedOverrides(root, 'pnpm-workspace.yaml').singleton).toBe('^1.1.0')
+  })
+
+  it('does not offer a protected upgrade declined during interactive configuration', async () => {
+    Object.defineProperty(input, 'isTTY', { configurable: true, value: true })
+    Object.defineProperty(output, 'isTTY', { configurable: true, value: true })
+    promptMocks.select.mockResolvedValueOnce('recommended').mockResolvedValueOnce(0)
+    promptMocks.confirm.mockResolvedValueOnce(false)
+
+    const root = await createTempRoot()
+    await writeFile(path.join(root, 'pnpm-workspace.yaml'), 'overrides:\n  singleton: ^1.0.0\n')
+    await writeFile(path.join(root, 'package.json'), JSON.stringify({ dependencies: { singleton: '^1.0.0' } }))
+    const infoLines: string[] = []
+    vi.spyOn(console, 'info').mockImplementation((message?: unknown) => {
+      infoLines.push(String(message ?? ''))
+    })
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    processMocks.runCommandBuffered.mockImplementation(async (spec: CommandSpec) => {
+      const args = spec.args ?? []
+      if (args.includes('outdated')) return bufferedResult('{}')
+      if (args.includes('ncu')) return bufferedResult('{"package.json":{"singleton":"^1.1.0"}}')
+      if (args.includes('view')) return bufferedResult('{"1.1.0":"2026-06-01T00:00:00.000Z"}')
+      throw new Error(`Unexpected buffered command: ${spec.command} ${args.join(' ')}`)
+    })
+
+    await runUpgradeEngine({ cwd: root, config: mergeConfig() }, [])
+
+    expect(promptMocks.multiselect).not.toHaveBeenCalled()
+    expect(promptMocks.confirm).toHaveBeenCalledTimes(1)
+    expect(processMocks.runCommandInherited).not.toHaveBeenCalled()
+    expect(stripAnsi(infoLines.join('\n'))).toContain('No eligible dependency updates')
+  })
+
+  it('offers cooldown exceptions only for upgrades the user allowed', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-06-17T12:00:00.000Z'))
+    Object.defineProperty(input, 'isTTY', { configurable: true, value: true })
+    Object.defineProperty(output, 'isTTY', { configurable: true, value: true })
+    promptMocks.select.mockResolvedValueOnce('recommended').mockResolvedValueOnce(7)
+    promptMocks.confirm.mockResolvedValueOnce(false)
+    promptMocks.multiselect.mockResolvedValueOnce([])
+
+    const root = await createTempRoot()
+    await writeFile(path.join(root, 'pnpm-workspace.yaml'), 'overrides:\n  singleton: ^1.0.0\n')
+    await writeFile(path.join(root, 'package.json'), JSON.stringify({ dependencies: { regular: '^1.0.0', singleton: '^1.0.0' } }))
+    vi.spyOn(console, 'info').mockImplementation(() => undefined)
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    processMocks.runCommandBuffered.mockImplementation(async (spec: CommandSpec) => {
+      const args = spec.args ?? []
+      if (args.includes('outdated')) return bufferedResult('{}')
+      if (args.includes('ncu')) return bufferedResult('{"package.json":{"regular":"^1.1.0","singleton":"^1.1.0"}}')
+      if (args.includes('view')) return bufferedResult('{"1.1.0":"2026-06-16T12:00:00.000Z"}')
+      throw new Error(`Unexpected buffered command: ${spec.command} ${args.join(' ')}`)
+    })
+
+    await runUpgradeEngine({ cwd: root, config: mergeConfig() }, [])
+
+    expect(promptMocks.multiselect).toHaveBeenCalledWith(expect.objectContaining({
+      message: 'Select cooldown exceptions',
+      options: [expect.objectContaining({ value: 'regular' })],
+    }))
+    expect(promptMocks.confirm).toHaveBeenCalledTimes(1)
+    expect(processMocks.runCommandInherited).not.toHaveBeenCalled()
+  })
+
+  it('preflights protected singleton targets before applying regular upgrades', async () => {
+    const root = await createTempRoot()
+    const core = path.join(root, 'packages', 'core')
+    await mkdir(core, { recursive: true })
+    await writeFile(path.join(root, 'pnpm-workspace.yaml'), 'overrides:\n  singleton: ^1.0.0\n')
+    await writeFile(path.join(root, 'package.json'), JSON.stringify({ dependencies: { stable: '^1.0.0', singleton: '^1.0.0' } }))
+    await writeFile(path.join(core, 'package.json'), JSON.stringify({ dependencies: { singleton: '^1.0.0' } }))
+    vi.spyOn(console, 'info').mockImplementation(() => undefined)
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    processMocks.runCommandBuffered.mockImplementation(async (spec: CommandSpec) => {
+      const args = spec.args ?? []
+      if (args.includes('outdated')) return bufferedResult('{}')
+      if (args.includes('ncu')) return bufferedResult(JSON.stringify({
+        'package.json': { stable: '^1.1.0', singleton: '^2.0.0' },
+        'packages/core/package.json': { singleton: '^3.0.0' },
+      }))
+      if (args.includes('view')) return bufferedResult('{}')
+      throw new Error(`Unexpected buffered command: ${spec.command} ${args.join(' ')}`)
+    })
+
+    await expect(runUpgradeEngine({ cwd: root, config: mergeConfig() }, ['--yes', '--no-cooldown', '--major', '--isolated']))
+      .rejects.toThrow('Protected singleton upgrade target is ambiguous')
+
+    expect(processMocks.runCommandInherited).not.toHaveBeenCalled()
   })
 })
 

@@ -71,6 +71,7 @@ const colors = {
 const manifestVersionFields = ['dependencies', 'devDependencies', 'peerDependencies', 'optionalDependencies'] as const
 const upgradeTypes: UpgradeType[] = ['major', 'minor', 'patch']
 const cooldownPresets = [0, 3, 7, 14, 30]
+const upgradeBooleanFlags = new Set(['--yes', '--major', '--latest', '--no-cooldown', '--isolated', '--align-protected-singletons', '--dry-run', '--verbose'])
 const skippedReasonOrder: SkippedUpgradeReason[] = ['cooldown', 'not-selected', 'protected-singleton']
 const skippedReasonLabels: Record<SkippedUpgradeReason, string> = {
   cooldown: 'Cooldown',
@@ -721,19 +722,32 @@ export function parseUpgradeTypes(value: string): UpgradeType[] {
 }
 
 export function parseCliArgs(runtime: Runtime, rawArgs: string[]): UpgradeOptions {
+  const daysArgs = rawArgs.filter((arg) => arg.startsWith('--days='))
+  const typesArgs = rawArgs.filter((arg) => arg.startsWith('--types='))
+  const unknownArgs = rawArgs.filter((arg) => !upgradeBooleanFlags.has(arg) && !arg.startsWith('--days=') && !arg.startsWith('--types='))
+  if (unknownArgs.length > 0) throw new Error(`Unknown upgrade option(s): ${unknownArgs.join(', ')}`)
+  if (daysArgs.length > 1) throw new Error('Use --days only once.')
+  if (typesArgs.length > 1) throw new Error('Use --types only once.')
+  if (daysArgs.length > 0 && rawArgs.includes('--no-cooldown')) throw new Error('Use either --days or --no-cooldown, not both.')
+  if (typesArgs.length > 0 && (rawArgs.includes('--major') || rawArgs.includes('--latest'))) {
+    throw new Error('Use either --types or --major/--latest, not both.')
+  }
+
   const verbose = rawArgs.includes('--verbose')
-  const daysArg = rawArgs.find((arg) => arg.startsWith('--days='))
-  const typesArg = rawArgs.find((arg) => arg.startsWith('--types='))
+  const daysArg = daysArgs[0]
+  const typesArg = typesArgs[0]
   const defaultDays = runtime.config.upgrade?.defaultCooldownDays ?? 7
-  const days = daysArg
-    ? Number.parseInt(daysArg.slice('--days='.length), 10)
-    : rawArgs.includes('--no-cooldown') ? 0 : defaultDays
+  const daysValue = daysArg?.slice('--days='.length)
+  if (typeof daysValue !== 'undefined' && (!/^\d+$/u.test(daysValue) || !Number.isSafeInteger(Number(daysValue)))) {
+    throw new Error('Invalid --days value. Use a non-negative integer.')
+  }
+  const days = typeof daysValue === 'undefined' ? (rawArgs.includes('--no-cooldown') ? 0 : defaultDays) : Number(daysValue)
 
   return {
     types: typesArg ? parseUpgradeTypes(typesArg.slice('--types='.length)) : rawArgs.includes('--major') || rawArgs.includes('--latest') ? [...upgradeTypes] : ['minor', 'patch'],
     verbose,
     alignProtectedSingletons: rawArgs.includes('--isolated') || rawArgs.includes('--align-protected-singletons'),
-    days: Number.isFinite(days) && days > 0 ? days : 0,
+    days,
     dryRun: rawArgs.includes('--dry-run'),
     interactive: false,
   }
@@ -818,33 +832,41 @@ export async function runUpgradeEngine(runtime: Runtime, rawArgs: string[]): Pro
     (filePath, packageName) => versionsByFile[filePath]?.[packageName] ?? null,
   ))
   const selectedTypeSet = new Set(options.types)
+  const protectedEntryNames = new Set(protectedNames)
   const majorEntries = classifiedEntries.filter((entry) => entry.type === 'major')
+  const selectableMajorEntries = majorEntries.filter((entry) => options.alignProtectedSingletons || !protectedEntryNames.has(entry.packageName))
   let selectedMajorPackageNames: Set<string> | null = null
-  if (options.interactive && selectedTypeSet.has('major') && majorEntries.length > 0) {
-    selectedMajorPackageNames = await selectMajorPackageNames(majorEntries)
+  if (options.interactive && selectedTypeSet.has('major') && selectableMajorEntries.length > 0) {
+    printEntryGroups('Candidates: major updates requiring selection', toReportEntries(selectableMajorEntries, new Map()))
+    selectedMajorPackageNames = await selectMajorPackageNames(selectableMajorEntries)
     if (!selectedMajorPackageNames) {
       prompts.cancel('Upgrade cancelled.')
       return
     }
   }
   const selectedEntries = classifiedEntries.filter((entry) => selectedTypeSet.has(entry.type)
-    && (entry.type !== 'major' || !selectedMajorPackageNames || selectedMajorPackageNames.has(entry.packageName)))
+    && (entry.type !== 'major'
+      || (protectedEntryNames.has(entry.packageName) && !options.alignProtectedSingletons)
+      || !selectedMajorPackageNames
+      || selectedMajorPackageNames.has(entry.packageName)))
   const notSelectedEntries = classifiedEntries.filter((entry) => !selectedEntries.includes(entry))
+  const protectedSkippedEntries = selectedEntries.filter((entry) => protectedEntryNames.has(entry.packageName) && !options.alignProtectedSingletons)
+  const cooldownCandidateEntries = selectedEntries.filter((entry) => !protectedSkippedEntries.includes(entry))
   const releaseDates = new Map<string, Date | null>()
 
   if (options.days > 0) {
     console.info(colorize(`Checking release age (${options.days}-day cooldown)...`, colors.cyan))
-    await resolveReleaseDates(runtime, selectedEntries, releaseDates, true)
+    await resolveReleaseDates(runtime, cooldownCandidateEntries, releaseDates, true)
   }
   await resolveReleaseDates(runtime, classifiedEntries, releaseDates, false)
 
-  const selectedReportEntries = toReportEntries(selectedEntries, releaseDates)
   const notSelectedReportEntries = toReportEntries(notSelectedEntries, releaseDates)
-  const cooldownHoldPackageNames = getCooldownHoldPackageNames(selectedReportEntries, options.days)
-  const cooldownHoldEntries = selectedReportEntries.filter((entry) => cooldownHoldPackageNames.has(entry.packageName))
-  const protectedEntryNames = new Set(protectedNames)
+  const protectedSkippedReportEntries = toReportEntries(protectedSkippedEntries, releaseDates)
+  const cooldownCandidateReportEntries = toReportEntries(cooldownCandidateEntries, releaseDates)
+  const cooldownHoldPackageNames = getCooldownHoldPackageNames(cooldownCandidateReportEntries, options.days)
+  const cooldownHoldEntries = cooldownCandidateReportEntries.filter((entry) => cooldownHoldPackageNames.has(entry.packageName))
   let cooldownRejectList = new Set(cooldownHoldPackageNames)
-  let eligibleEntries = selectedReportEntries.filter((entry) => !cooldownRejectList.has(entry.packageName))
+  let eligibleEntries = cooldownCandidateReportEntries.filter((entry) => !cooldownRejectList.has(entry.packageName))
   let regularEntries = eligibleEntries.filter((entry) => !protectedEntryNames.has(entry.packageName))
   let protectedHoldEntries = eligibleEntries.filter((entry) => protectedEntryNames.has(entry.packageName))
   let protectedUpgradedEntries: ReportEntry[] = []
@@ -852,20 +874,19 @@ export async function runUpgradeEngine(runtime: Runtime, rawArgs: string[]): Pro
 
   const refreshSkippedEntries = (): void => {
     skippedEntriesByKey = new Map<string, SkippedUpgradeEntry>()
-    addSkippedEntries(skippedEntriesByKey, selectedReportEntries.filter((entry) => cooldownRejectList.has(entry.packageName)).map((entry) => ({ ...entry, reason: 'cooldown' })))
+    addSkippedEntries(skippedEntriesByKey, cooldownCandidateReportEntries.filter((entry) => cooldownRejectList.has(entry.packageName)).map((entry) => ({ ...entry, reason: 'cooldown' })))
     addSkippedEntries(skippedEntriesByKey, notSelectedReportEntries.map((entry) => ({ ...entry, reason: 'not-selected' })))
+    addSkippedEntries(skippedEntriesByKey, protectedSkippedReportEntries.map((entry) => ({ ...entry, reason: 'protected-singleton' })))
   }
   refreshSkippedEntries()
 
   printEntryGroups('Preview: eligible updates', regularEntries)
-  printEntryGroups('Preview: protected singleton updates', protectedHoldEntries)
+  if (options.alignProtectedSingletons) printEntryGroups('Preview: protected singleton updates', protectedHoldEntries)
   const previewSkippedEntries = Array.from(skippedEntriesByKey.values())
   for (const reason of skippedReasonOrder) {
-    if (options.interactive && cooldownHoldEntries.length > 0 && reason === 'cooldown') continue
     printEntryGroups(`Preview: ${skippedReasonLabels[reason]}`, previewSkippedEntries.filter((entry) => entry.reason === reason))
   }
 
-  let selectedCooldownExceptions = false
   if (options.interactive && cooldownHoldEntries.length > 0) {
     const selectedCooldownExceptionPackageNames = await selectCooldownExceptionPackageNames(cooldownHoldEntries)
     if (!selectedCooldownExceptionPackageNames) {
@@ -873,23 +894,33 @@ export async function runUpgradeEngine(runtime: Runtime, rawArgs: string[]): Pro
       return
     }
 
-    selectedCooldownExceptions = selectedCooldownExceptionPackageNames.size > 0
     cooldownRejectList = new Set(Array.from(cooldownHoldPackageNames).filter((packageName) => !selectedCooldownExceptionPackageNames.has(packageName)))
-    eligibleEntries = selectedReportEntries.filter((entry) => !cooldownRejectList.has(entry.packageName))
+    eligibleEntries = cooldownCandidateReportEntries.filter((entry) => !cooldownRejectList.has(entry.packageName))
     regularEntries = eligibleEntries.filter((entry) => !protectedEntryNames.has(entry.packageName))
     protectedHoldEntries = eligibleEntries.filter((entry) => protectedEntryNames.has(entry.packageName))
     refreshSkippedEntries()
 
     printEntryGroups('Final review: updates to apply', regularEntries)
     if (options.alignProtectedSingletons) printEntryGroups('Final review: protected singleton upgrades', protectedHoldEntries)
+    const finalSkippedEntries = Array.from(skippedEntriesByKey.values())
+    for (const reason of skippedReasonOrder) {
+      printEntryGroups(`Final review: ${skippedReasonLabels[reason]}`, finalSkippedEntries.filter((entry) => entry.reason === reason))
+    }
   }
 
+  const protectedPlans = options.alignProtectedSingletons && protectedHoldEntries.length > 0
+    ? buildProtectedUpgradePlans(runtime, protectedHoldEntries)
+    : []
+
   if (options.dryRun) {
+    if (regularEntries.length === 0 && protectedHoldEntries.length === 0) {
+      console.info('- No eligible dependency updates.')
+    }
     prompts.outro('Dry run complete. No files changed.')
     return
   }
 
-  if (options.interactive) {
+  if (options.interactive && (regularEntries.length > 0 || protectedHoldEntries.length > 0)) {
     const confirmed = await prompts.confirm({ message: 'Apply these upgrades?', initialValue: true })
     if (isCancelled(confirmed) || !confirmed) {
       prompts.cancel('Upgrade cancelled.')
@@ -907,9 +938,8 @@ export async function runUpgradeEngine(runtime: Runtime, rawArgs: string[]): Pro
   }
 
   if (options.alignProtectedSingletons && protectedHoldEntries.length > 0) {
-    const plans = buildProtectedUpgradePlans(runtime, protectedHoldEntries)
-    const selectedPackages = plans.map((plan) => plan.packageName)
-    const overrideUpdates = Object.fromEntries(plans.map((plan) => [plan.packageName, plan.targetVersion]))
+    const selectedPackages = protectedPlans.map((plan) => plan.packageName)
+    const overrideUpdates = Object.fromEntries(protectedPlans.map((plan) => [plan.packageName, plan.targetVersion]))
 
     console.info(colorize('Applying protected singleton upgrades...', colors.cyan))
     const previousPnpmVersion = await readRootPnpmPackageManagerVersion(runtime.cwd)
@@ -943,7 +973,7 @@ export async function runUpgradeEngine(runtime: Runtime, rawArgs: string[]): Pro
   printEntryGroups('Updated', regularEntries)
   printEntryGroups('Protected singleton upgrades', protectedUpgradedEntries)
 
-  const skippedEntries = selectedCooldownExceptions || selectedMajorPackageNames?.size ? [] : Array.from(skippedEntriesByKey.values())
+  const skippedEntries = Array.from(skippedEntriesByKey.values())
   if (skippedEntries.length > 0) {
     const hints = runtime.config.upgrade?.protectedDependencyUpstreamHints ?? {}
     console.info('')
