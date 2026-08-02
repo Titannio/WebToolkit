@@ -9,6 +9,9 @@ import {
 
 export { type PopularImageMimeType }
 
+/** Receives aggregate upload progress as an integer percentage. */
+export type UploadProgressCallback = (percentage: number) => void
+
 /**
  * Checks if a browser File looks like an image based on MIME type.
  *
@@ -64,6 +67,56 @@ export function downloadBlobFile(blob: Blob, filename: string): void {
     anchor.remove()
     URL.revokeObjectURL(objectUrl)
   }
+}
+
+/**
+ * Aggregates per-file upload percentages proportionally to file size.
+ *
+ * @param files - Files whose progress will be reported.
+ * @param onProgress - Aggregate progress callback.
+ * @returns A callback for reporting progress for one file index.
+ */
+export function createUploadProgressAggregator(
+  files: ReadonlyArray<Pick<File, 'size'>>,
+  onProgress: UploadProgressCallback,
+): (index: number, percentage: number) => void {
+  const weights = files.map((file) => file.size || 1)
+  const totalWeight = weights.reduce((total, size) => total + size, 0)
+  const percentages = files.map(() => 0)
+
+  return (index, percentage) => {
+    if (index < 0 || index >= percentages.length || totalWeight === 0) return
+    percentages[index] = Math.min(100, Math.max(0, percentage))
+    const loaded = percentages.reduce(
+      (total, current, currentIndex) => total + ((current / 100) * (weights[currentIndex] ?? 0)),
+      0,
+    )
+    onProgress(Math.floor((loaded / totalWeight) * 100))
+  }
+}
+
+/**
+ * Uploads files in order while reporting aggregate progress.
+ *
+ * @param files - Files to upload.
+ * @param uploadFile - Per-file upload operation.
+ * @param onProgress - Aggregate progress callback.
+ * @returns Results in the same order as the input files.
+ */
+export async function uploadFilesSequentially<TResult>(
+  files: readonly File[],
+  uploadFile: (file: File, index: number, onProgress: UploadProgressCallback) => Promise<TResult>,
+  onProgress: UploadProgressCallback = () => undefined,
+): Promise<TResult[]> {
+  const results: TResult[] = []
+  const reportProgress = createUploadProgressAggregator(files, onProgress)
+
+  for (const [index, file] of files.entries()) {
+    results.push(await uploadFile(file, index, (percentage) => reportProgress(index, percentage)))
+    reportProgress(index, 100)
+  }
+
+  return results
 }
 
 async function readFileHead(file: File, bytesToRead: number): Promise<Uint8Array> {

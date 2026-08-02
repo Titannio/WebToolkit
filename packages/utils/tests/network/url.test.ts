@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { ensureUrlProtocol } from '@src/network/url.js'
+import { buildUrl, ensureUrlProtocol, joinUrl } from '@src/network/url.js'
 
 describe('url utils', () => {
   it('should keep explicit http and https protocols', () => {
@@ -17,5 +17,23 @@ describe('url utils', () => {
 
   it('should keep empty values empty', () => {
     expect(ensureUrlProtocol('')).toBe('')
+  })
+
+  it('joins base URLs and paths without duplicate slashes', () => {
+    expect(joinUrl('https://app.example.test/', '/dashboard')).toBe('https://app.example.test/dashboard')
+  })
+
+  it('preserves path queries and appends non-null query values', () => {
+    expect(buildUrl('https://app.example.test', '/invite?step=otp', {
+      token: 'abc 123',
+      enabled: true,
+      empty: undefined,
+      absent: null,
+    })).toBe('https://app.example.test/invite?step=otp&token=abc+123&enabled=true')
+  })
+
+  it('returns undefined when a configured base URL is absent', () => {
+    expect(joinUrl(undefined, '/dashboard')).toBeUndefined()
+    expect(buildUrl(undefined, '/dashboard')).toBeUndefined()
   })
 })

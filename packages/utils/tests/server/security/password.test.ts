@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { generateRandomPassword } from '@src/server/security/password.js'
-import { extractBearerToken, timingSafeEqualStrings } from '@src/server/security/index.js'
+import { extractBearerToken, sha256Hex, timingSafeEqualStrings } from '@src/server/security/index.js'
 
 describe('server/password', () => {
   it('should preserve the default 10-character alphanumeric contract', () => {
@@ -49,6 +49,13 @@ describe('server/password', () => {
 })
 
 describe('server/security', () => {
+  it('creates canonical SHA-256 digests for text and binary input', () => {
+    const digest = 'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad'
+
+    expect(sha256Hex('abc')).toBe(digest)
+    expect(sha256Hex(new TextEncoder().encode('abc'))).toBe(digest)
+  })
+
   it('extracts only valid Bearer tokens', () => {
     expect(extractBearerToken('Bearer token-value')).toBe('token-value')
     expect(extractBearerToken('  bearer   token-value  ')).toBe('token-value')

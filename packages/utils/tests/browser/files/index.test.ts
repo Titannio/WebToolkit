@@ -1,7 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
+  createUploadProgressAggregator,
   downloadBlobFile,
   isImageFile,
+  uploadFilesSequentially,
   validateDocumentMagicBytes,
   validateImageMagicBytes,
 } from '@src/browser/files/index.js'
@@ -99,5 +101,48 @@ describe('browser/files', () => {
     expect(click).toHaveBeenCalledOnce()
     expect(revokeObjectURL).toHaveBeenCalledWith('blob:report')
     expect(document.querySelector('a[download="report.txt"]')).toBeNull()
+  })
+
+  it('aggregates progress by file size and ignores invalid reports', () => {
+    const onProgress = vi.fn()
+    const report = createUploadProgressAggregator([{ size: 100 }, { size: 300 }], onProgress)
+
+    report(0, 100)
+    report(1, 50)
+    report(2, 50)
+    report(-1, 50)
+
+    expect(onProgress).toHaveBeenNthCalledWith(1, 25)
+    expect(onProgress).toHaveBeenNthCalledWith(2, 62)
+  })
+
+  it('clamps upload progress, gives empty files weight, and ignores empty sets', () => {
+    const onProgress = vi.fn()
+    const report = createUploadProgressAggregator([{ size: 0 }], onProgress)
+
+    report(0, 150)
+    report(0, -1)
+    createUploadProgressAggregator([], onProgress)(0, 50)
+
+    expect(onProgress).toHaveBeenNthCalledWith(1, 100)
+    expect(onProgress).toHaveBeenNthCalledWith(2, 0)
+    expect(onProgress).toHaveBeenCalledTimes(2)
+  })
+
+  it('uploads files sequentially and reports completion', async () => {
+    const files = [
+      new File(['first'], 'first.png', { type: 'image/png' }),
+      new File(['second'], 'second.png', { type: 'image/png' }),
+    ]
+    const onProgress = vi.fn()
+    const uploadFile = vi.fn(async (file: File, index: number, reportProgress: (percentage: number) => void) => {
+      reportProgress(50)
+      return `${index}:${file.name}`
+    })
+
+    await expect(uploadFilesSequentially(files, uploadFile, onProgress)).resolves.toEqual(['0:first.png', '1:second.png'])
+    expect(uploadFile).toHaveBeenNthCalledWith(2, files[1], 1, expect.any(Function))
+    expect(onProgress).toHaveBeenLastCalledWith(100)
+    await expect(uploadFilesSequentially([], async () => 'unused')).resolves.toEqual([])
   })
 })

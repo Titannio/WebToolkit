@@ -24,6 +24,18 @@ export function formatPercentRatio(numerator: number = 0, denominator: number = 
   return pct.toFixed(digits) + '%'
 }
 
+/**
+ * Converts a numeric input draft to a finite number without applying domain rules.
+ *
+ * @param value - Numeric input value or draft.
+ * @returns A finite number, or null for blank and non-finite values.
+ */
+export function parseFiniteNumberInput(value: string | number): number | null {
+  if (typeof value === 'string' && value.trim() === '') return null
+  const parsed = typeof value === 'number' ? value : Number(value)
+  return Number.isFinite(parsed) ? parsed : null
+}
+
 export { sum, mean }
 
 

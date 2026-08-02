@@ -3,6 +3,16 @@ import { createHash, timingSafeEqual } from 'node:crypto'
 export * from './password.js'
 
 /**
+ * Returns the SHA-256 hexadecimal digest of a complete value.
+ *
+ * @param value - UTF-8 text or binary input.
+ * @returns Lowercase hexadecimal SHA-256 digest.
+ */
+export function sha256Hex(value: string | Uint8Array): string {
+  return createHash('sha256').update(value).digest('hex')
+}
+
+/**
  * Extracts a token from a Bearer authorization header.
  *
  * @param {string | null | undefined} authorization - Authorization header.
