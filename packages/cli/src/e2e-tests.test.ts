@@ -163,10 +163,17 @@ describe('Playwright E2E tests', () => {
     const directory = await root()
     mocks.spawn.mockImplementation((_command: string, args: string[]) => {
       const result = child()
-      if (args.includes('playwright')) setTimeout(() => result.emit('close', 2), 0)
+      if (args.includes('playwright')) {
+        setTimeout(() => {
+          result.stdout.write('runner output')
+          result.stderr.write('runner error output')
+          result.emit('close', 2)
+        }, 0)
+      }
       return result
     })
     await expect(runE2eTests({ cwd: directory, config: config() }, [])).rejects.toThrow('exit code 2')
+    await expect(readFile(path.join(directory, 'tests_output_errors-e2e.log'), 'utf8')).resolves.toContain('runner error output')
   })
 
   it('treats a runner with no exit code as a failure', async () => {

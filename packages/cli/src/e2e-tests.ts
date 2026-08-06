@@ -25,6 +25,11 @@ type PlaywrightBrowser = {
   executablePath(): string
 }
 
+type PlaywrightResult = {
+  code: number
+  output: string
+}
+
 const defaultTestFilePattern = '\\.spec\\.(ts|tsx|js|jsx)$'
 const ignoredDirectoryNames = new Set(['node_modules', 'dist', 'build', 'coverage', '.git'])
 
@@ -155,7 +160,7 @@ async function waitForServer(managed: ManagedServer): Promise<void> {
   throw new Error(`E2E server ${managed.config.name} did not become ready at ${managed.config.readinessUrl} within ${managed.config.timeoutMs}ms.`)
 }
 
-function runPlaywright(rootDir: string, config: E2eTestsConfig, configPath: string, rawArgs: string[]): Promise<number> {
+function runPlaywright(rootDir: string, config: E2eTestsConfig, configPath: string, rawArgs: string[]): Promise<PlaywrightResult> {
   const args = rawArgs[0] === '--' ? rawArgs.slice(1) : rawArgs
   const resolved = resolveSpawnSpec(config.runner.command, [
     ...config.runner.args,
@@ -167,34 +172,68 @@ function runPlaywright(rootDir: string, config: E2eTestsConfig, configPath: stri
     cwd: rootDir,
     env: { ...process.env, FORCE_COLOR: '1' },
     shell: false,
-    stdio: 'inherit',
+    stdio: ['ignore', 'pipe', 'pipe'],
   })
   return new Promise((resolve, reject) => {
+    let output = ''
+    child.stdout?.on('data', (chunk: Buffer) => {
+      output += chunk.toString()
+      process.stdout.write(chunk)
+    })
+    child.stderr?.on('data', (chunk: Buffer) => {
+      output += chunk.toString()
+      process.stderr.write(chunk)
+    })
     child.on('error', reject)
-    child.on('close', (code) => resolve(code ?? 1))
+    child.on('close', (code) => resolve({ code: code ?? 1, output }))
   })
 }
 
-export async function runE2eTests(runtime: Runtime, rawArgs: string[]): Promise<void> {
-  const config = getE2eConfig(runtime.config)
-  assertE2eFiles(runtime.cwd, config)
-  assertPlaywrightBrowser(runtime.cwd, config)
-  const playwrightConfig = createPlaywrightConfig(runtime.cwd, config)
+function writeE2eFailureLog(rootDir: string, error: Error, servers: ManagedServer[], output: string): void {
+  const sections = [
+    'Playwright E2E failure report',
+    `Generated at: ${new Date().toISOString()}`,
+    `Root: ${rootDir}`,
+    `Error: ${error.message}`,
+  ]
 
-  console.info(`\nStarting Playwright E2E suite (${config.browser})...\n`)
-  const servers = config.servers.map((server) => startServer(runtime.cwd, server))
+  if (output) sections.push('', 'Playwright output:', output.trim())
+  for (const server of servers) {
+    if (server.output) sections.push('', `Server output (${server.config.name}):`, server.output.trim())
+  }
+
+  fs.writeFileSync(path.join(rootDir, 'tests_output_errors-e2e.log'), `${sections.join('\n')}\n`, 'utf8')
+}
+
+export async function runE2eTests(runtime: Runtime, rawArgs: string[]): Promise<void> {
+  const errorLogPath = path.join(runtime.cwd, 'tests_output_errors-e2e.log')
+  fs.rmSync(errorLogPath, { force: true })
+  const servers: ManagedServer[] = []
   const cleanup = () => servers.forEach(({ child }) => stopChildProcessTree(child))
+  let playwrightConfig: ReturnType<typeof createPlaywrightConfig> | undefined
+  let playwrightOutput = ''
   process.once('SIGINT', cleanup)
   process.once('SIGTERM', cleanup)
 
   try {
+    const config = getE2eConfig(runtime.config)
+    assertE2eFiles(runtime.cwd, config)
+    assertPlaywrightBrowser(runtime.cwd, config)
+    playwrightConfig = createPlaywrightConfig(runtime.cwd, config)
+    console.info(`\nStarting Playwright E2E suite (${config.browser})...\n`)
+    servers.push(...config.servers.map((server) => startServer(runtime.cwd, server)))
     await Promise.all(servers.map(waitForServer))
-    const code = await runPlaywright(runtime.cwd, config, playwrightConfig.path, rawArgs)
-    if (code !== 0) throw new Error(`Playwright end-to-end tests failed with exit code ${code}.`)
+    const result = await runPlaywright(runtime.cwd, config, playwrightConfig.path, rawArgs)
+    playwrightOutput = result.output
+    if (result.code !== 0) throw new Error(`Playwright end-to-end tests failed with exit code ${result.code}.`)
+  } catch (error) {
+    writeE2eFailureLog(runtime.cwd, error as Error, servers, playwrightOutput)
+    console.info(`\nE2E failure details in ${path.relative(runtime.cwd, errorLogPath)}`)
+    throw error
   } finally {
     process.off('SIGINT', cleanup)
     process.off('SIGTERM', cleanup)
     cleanup()
-    playwrightConfig.cleanup()
+    playwrightConfig?.cleanup()
   }
 }
