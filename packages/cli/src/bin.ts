@@ -8,6 +8,7 @@ import { runBundleAudit } from './bundle-audit.js'
 import { parseCleanArgs, runCleaner } from './cleaner.js'
 import { runDevGrid } from './dev-grid.js'
 import { runDevWatch } from './dev-watch.js'
+import { runE2eTests } from './e2e-tests.js'
 import { runEnvBootstrap, runEnvDoctor } from './environment.js'
 import { printGuardHelp, runBuiltinGuard } from './guard-runner.js'
 import { isMainModule } from './guards/guard-config.js'
@@ -30,6 +31,7 @@ function printHelp(taskNames: string[] = []): void {
   console.info('  build                         Run the configured build task.')
   console.info('  test                          Run the configured test task.')
   console.info('  test-coverage                 Run the configured coverage task.')
+  console.info('  test-e2e                      Run configured Playwright end-to-end tests.')
   console.info('  workspace-test <task>         Run a workspace-local Vitest task.')
   console.info('  release-gate                  Run the configured release gate task.')
   console.info('  validate                      Run the configured validation task.')
@@ -65,6 +67,10 @@ function printEngineHelp(command: string): void {
     'test-coverage': [
       'Usage: webtoolkit test-coverage [--filter <workspace/package>]',
       'Runs configured workspace coverage tasks.',
+    ],
+    'test-e2e': [
+      'Usage: webtoolkit test-e2e [Playwright args]',
+      'Runs configured Playwright end-to-end tests.',
     ],
     check: [
       'Usage: webtoolkit check',
@@ -187,6 +193,15 @@ export async function main(rawArgs = process.argv.slice(2), cwd = process.cwd())
       return
     }
     await runWorkspaceCoverage({ cwd: workspaceRoot, config }, args)
+    return
+  }
+
+  if (command === 'test-e2e') {
+    if (hasHelp(args)) {
+      printEngineHelp(command)
+      return
+    }
+    await runE2eTests({ cwd: workspaceRoot, config }, args)
     return
   }
 

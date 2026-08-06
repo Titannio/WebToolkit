@@ -1,4 +1,4 @@
-import { spawn, spawnSync } from 'node:child_process'
+import { spawn, spawnSync, type ChildProcess } from 'node:child_process'
 import path from 'node:path'
 
 export type CommandResult = {
@@ -63,6 +63,20 @@ export function resolveSpawnSpec(command: string, args: string[] = []): { comman
   return {
     command: process.env.ComSpec ?? 'cmd.exe',
     args: ['/d', '/s', '/c', command.replace(/\.cmd$/iu, ''), ...args],
+  }
+}
+
+export function stopChildProcessTree(child: ChildProcess): void {
+  if (child.exitCode !== null || child.signalCode !== null || typeof child.pid !== 'number') return
+  if (process.platform === 'win32') {
+    spawn('taskkill', ['/pid', String(child.pid), '/t', '/f'], { stdio: 'ignore', windowsHide: true })
+    return
+  }
+
+  try {
+    process.kill(-child.pid, 'SIGTERM')
+  } catch {
+    child.kill('SIGTERM')
   }
 }
 

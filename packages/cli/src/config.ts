@@ -46,6 +46,7 @@ export type WebToolkitCliConfig = {
   guards?: GuardsConfig
   documentation?: DocumentationConfig
   workspaceTests?: WorkspaceTestsConfig
+  e2eTests?: E2eTestsConfig
   repoCheck?: RepoCheckConfig
   releaseGate?: ReleaseGateConfig
   validate?: ValidateConfig
@@ -258,6 +259,34 @@ export type WorkspaceTestsConfig = {
   ignoreDirNames?: string[]
   maxFailureExcerptLines?: number
 }
+
+export type E2eServerConfig = {
+  name: string
+  command: string
+  args?: string[]
+  cwd?: string
+  env?: Record<string, string>
+  readinessUrl: string
+  timeoutMs: number
+}
+
+export type E2eTestsConfig = {
+  playwrightPackage: string
+  testDirectory: string
+  testFilePattern?: string
+  browser: 'chromium' | 'firefox' | 'webkit'
+  playwright: {
+    config: Record<string, JsonValue>
+    ciConfig?: Record<string, JsonValue>
+  }
+  runner: {
+    command: string
+    args: string[]
+  }
+  servers: E2eServerConfig[]
+}
+
+export type JsonValue = boolean | null | number | string | JsonValue[] | { [key: string]: JsonValue }
 
 export type RepoCheckConfig = {
   title?: string
@@ -516,6 +545,7 @@ export function mergeConfig(override: PartialWebToolkitCliConfig = {}): WebToolk
     guards: override.guards,
     documentation: override.documentation,
     workspaceTests: override.workspaceTests,
+    e2eTests: override.e2eTests,
     repoCheck: override.repoCheck,
     releaseGate: override.releaseGate,
     validate: override.validate,

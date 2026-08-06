@@ -2,7 +2,7 @@ import { spawn, spawnSync } from 'node:child_process'
 import { createServer } from 'node:net'
 
 import type { DevAppConfig, WebToolkitCliConfig } from './config.js'
-import { buildPackageManagerCommand, resolveSpawnSpec } from './process.js'
+import { buildPackageManagerCommand, resolveSpawnSpec, stopChildProcessTree } from './process.js'
 
 type Runtime = {
   cwd: string
@@ -128,20 +128,6 @@ async function ensurePortsAvailable(apps: Array<{ key: string; definition: DevAp
   return false
 }
 
-function stopChildTree(child: ReturnType<typeof spawn>): void {
-  if (child.exitCode !== null || child.signalCode !== null || typeof child.pid !== 'number') return
-  if (isWindows) {
-    spawn('taskkill', ['/pid', String(child.pid), '/t', '/f'], { stdio: 'ignore', windowsHide: true })
-    return
-  }
-
-  try {
-    process.kill(-child.pid, 'SIGTERM')
-  } catch {
-    child.kill('SIGTERM')
-  }
-}
-
 function runWatch(runtime: Runtime, selectedApps: Array<{ key: string; definition: DevAppConfig }>, silent: boolean): void {
   const children: ReturnType<typeof spawn>[] = []
   let shuttingDown = false
@@ -149,7 +135,7 @@ function runWatch(runtime: Runtime, selectedApps: Array<{ key: string; definitio
   function shutdown(exitCode: number): void {
     if (shuttingDown) return
     shuttingDown = true
-    for (const child of children) stopChildTree(child)
+    for (const child of children) stopChildProcessTree(child)
     process.exitCode = exitCode
   }
 

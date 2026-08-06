@@ -20,6 +20,7 @@ describe('config reference', () => {
       'guards',
       'documentation',
       'workspaceTests',
+      'e2eTests',
       'repoCheck',
       'releaseGate',
       'validate',
@@ -48,6 +49,7 @@ describe('config reference', () => {
     expect(formatConfigHelp('upgrade')).toContain('singletonGuardCommand (object; optional)')
     expect(formatConfigHelp('repoCheck')).toContain('default=false')
     expect(formatConfigHelp('workspaceTests')).toContain('executionMode (string; optional; default="turbo")')
+    expect(formatConfigHelp('e2eTests')).toContain('playwrightPackage (string; required; default="@playwright/test")')
     expect(formatConfigHelp('guards')).toContain('internalLink')
     expect(formatConfigHelp('guards')).toContain('packageSurface')
     expect(formatConfigHelp('guards')).toContain('repositoryHygiene')
@@ -128,6 +130,14 @@ describe('config reference', () => {
         executionMode: 'package-local',
         workspaces: [{ name: 'Web', package: '@acme/web', path: 'apps/web' }],
       },
+      e2eTests: {
+        playwrightPackage: '@playwright/test',
+        testDirectory: 'tests/e2e',
+        browser: 'chromium',
+        playwright: { config: { testMatch: '**/*.spec.ts' } },
+        runner: { command: 'pnpm', args: ['exec', 'playwright', 'test'] },
+        servers: [{ name: 'App', command: 'pnpm', readinessUrl: 'http://localhost:3000', timeoutMs: 120000 }],
+      },
       bundleAudit: {
         appDirs: ['apps/web'],
         budgets: [{
@@ -157,6 +167,7 @@ describe('config reference', () => {
     expect(() => validateConfig({ unknown: true })).toThrow('unknown')
     expect(() => validateConfig({ packageManager: 42 })).toThrow('packageManager')
     expect(() => validateConfig({ documentation: { files: [] } })).toThrow('documentation.files')
+    expect(() => validateConfig({ e2eTests: { playwrightPackage: '@playwright/test' } })).toThrow('e2eTests')
     expect(() => validateConfig({ guards: { codePattern: {
       tsconfig: 'tsconfig.json',
       modelsDirectory: 'src/models',

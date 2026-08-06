@@ -18,6 +18,7 @@ const mocks = vi.hoisted(() => ({
   runUpgradeEngine: vi.fn(),
   runBundleAudit: vi.fn(),
   runDevWatch: vi.fn(),
+  runE2eTests: vi.fn(),
   runDevGrid: vi.fn(),
   runReadyService: vi.fn(),
   runEnvBootstrap: vi.fn(),
@@ -38,6 +39,7 @@ vi.mock('./bundle-audit.js', () => ({ runBundleAudit: mocks.runBundleAudit }))
 vi.mock('./cleaner.js', () => ({ parseCleanArgs: mocks.parseCleanArgs, runCleaner: mocks.runCleaner }))
 vi.mock('./dev-grid.js', () => ({ runDevGrid: mocks.runDevGrid }))
 vi.mock('./dev-watch.js', () => ({ runDevWatch: mocks.runDevWatch }))
+vi.mock('./e2e-tests.js', () => ({ runE2eTests: mocks.runE2eTests }))
 vi.mock('./environment.js', () => ({ runEnvBootstrap: mocks.runEnvBootstrap, runEnvDoctor: mocks.runEnvDoctor }))
 vi.mock('./guard-runner.js', () => ({ printGuardHelp: mocks.printGuardHelp, runBuiltinGuard: mocks.runBuiltinGuard }))
 vi.mock('./jsdoc-report.js', () => ({ runJSDocReport: mocks.runJSDocReport }))
@@ -65,6 +67,11 @@ const nativeConfig = mergeConfig({
   bundleAudit: { appDirs: [] },
   devGrid: { layout: { rows: [{ panes: [{ title: 'A', command: 'a' }] }] } },
   devWatch: { apps: { a: { displayName: 'A', port: 1 } }, defaultApps: ['a'] },
+  e2eTests: {
+    playwrightPackage: '@playwright/test', testDirectory: 'tests/e2e', browser: 'chromium',
+    playwright: { config: { testMatch: '**/*.spec.ts' } },
+    runner: { command: 'pnpm', args: ['exec', 'playwright', 'test'] }, servers: [{ name: 'App', command: 'pnpm', readinessUrl: 'http://localhost:3000', timeoutMs: 1 }],
+  },
   jsdocReport: { includePaths: ['src'] },
   releaseGate: { stages: [{ name: 'test', command: 'npm' }] },
   repoCheck: { steps: [{ label: 'test', command: 'npm' }] },
@@ -133,6 +140,7 @@ describe('CLI command routing', () => {
     ['upgrade', mocks.runUpgradeEngine],
     ['performance-bundle-audit', mocks.runBundleAudit],
     ['dev-watch', mocks.runDevWatch],
+    ['test-e2e', mocks.runE2eTests],
     ['dev-grid', mocks.runDevGrid],
     ['wait-service', mocks.runReadyService],
     ['env-bootstrap', mocks.runEnvBootstrap],
@@ -159,6 +167,7 @@ describe('CLI command routing', () => {
     'upgrade',
     'performance-bundle-audit',
     'dev-watch',
+    'test-e2e',
     'dev-grid',
     'wait-service',
     'env-bootstrap',

@@ -19,6 +19,7 @@ webtoolkit check
 webtoolkit build
 webtoolkit test --filter backend
 webtoolkit test-coverage
+webtoolkit test-e2e -- --grep "checkout"
 webtoolkit release-gate
 webtoolkit validate
 webtoolkit jsdoc-report
@@ -117,6 +118,7 @@ Top-level fields:
 - `documentation`: declarative Markdown, collection, paired-document, and coverage-inventory checks.
 - `repoCheck`: repository quality check steps used by `webtoolkit check`.
 - `workspaceTests`: workspace targets used by `webtoolkit test`, `webtoolkit test-coverage`, and `webtoolkit workspace-test`.
+- `e2eTests`: Playwright runner, browser preflight, and managed service definitions used by `webtoolkit test-e2e`.
 - `releaseGate`: named critical stages used by `webtoolkit release-gate`.
 - `validate`: ordered validation steps used by `webtoolkit validate`.
 - `jsdocReport`: paths and rules used by `webtoolkit jsdoc-report`.
@@ -342,6 +344,17 @@ Workspace test fields:
 - `testFilePattern`: optional regex string for test files. Defaults to `\\.(test|spec)\\.(ts|tsx|js|jsx)$`.
 - `ignoreDirNames`: optional directory names skipped while counting test files.
 - `maxFailureExcerptLines`: optional maximum number of lines written per failed workspace.
+
+E2E test fields:
+
+- `playwrightPackage`: consumer-installed Playwright package used for browser preflight.
+- `testDirectory` and `testFilePattern`: Playwright spec discovery inputs.
+- `browser`: installed Playwright browser required before the suite starts.
+- `playwright.config`: JSON-compatible `defineConfig` options. The CLI generates and removes the Playwright config file for each run; `testDir` is always the configured `testDirectory`.
+- `playwright.ciConfig`: optional top-level Playwright option overrides when `CI` is set.
+- `runner`: command and argument array that runs Playwright; additional `test-e2e` arguments are forwarded to it.
+- `servers`: managed process definitions with command arguments, optional working directory/environment, exact readiness URL, and timeout in milliseconds.
+- The CLI starts all configured servers, waits for their readiness URLs, and always stops their process trees after Playwright exits.
 
 Release gate fields:
 
