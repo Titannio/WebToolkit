@@ -57,7 +57,6 @@ import {
   normalizePnpmOutdatedJson,
   parseCliArgs,
   parseUpgradeTypes,
-  parseJsonObjectFromCommandOutput,
   parsePnpmPackageManagerVersion,
   readManifestVersions,
   readProtectedOverrides,
@@ -81,8 +80,8 @@ async function createTempRoot(): Promise<string> {
   return root
 }
 
-function bufferedResult(output: string, code = 0): CommandResult {
-  return { code, output }
+function bufferedResult(stdout: string, code = 0, stderr = ''): CommandResult {
+  return { code, output: stdout + stderr, stdout, stderr }
 }
 
 function stripAnsi(value: string): string {
@@ -203,17 +202,13 @@ describe('upgrade normalization helpers', () => {
     expect(unquoteYamlScalar(' value ')).toBe('value')
   })
 
-  it('normalizes ncu output shapes and embedded JSON', () => {
+  it('normalizes ncu output shapes', () => {
     expect(normalizeNcuJson('')).toEqual({})
     expect(normalizeNcuJson('{"a":"2.0.0","ignored":1}')).toEqual({ 'package.json': { a: '2.0.0' } })
     expect(normalizeNcuJson('{"b/package.json":{"z":"2"},"a/package.json":{"a":"1","bad":false}}')).toEqual({
       'a/package.json': { a: '1' },
       'b/package.json': { z: '2' },
     })
-    expect(parseJsonObjectFromCommandOutput('warn\n{"text":"a\\\\\\"{b}","nested":{"ok":true}}\nwarn'))
-      .toEqual({ text: 'a\\"{b}', nested: { ok: true } })
-    expect(() => parseJsonObjectFromCommandOutput('warning only')).toThrow('No JSON object')
-    expect(() => parseJsonObjectFromCommandOutput('warning {"open": true')).toThrow('Unterminated JSON object')
   })
 
   it('normalizes pnpm outdated metadata and workspace locations', () => {
@@ -499,9 +494,9 @@ describe('upgrade cooldown', () => {
       if (args.includes('outdated')) {
         return bufferedResult(JSON.stringify({ dep: {
           current: '1.0.0', latest: '1.0.1', dependentPackages: [{ location: root }],
-        } }), 1)
+        } }), 1, 'pnpm warning\n')
       }
-      if (args.includes('ncu')) return bufferedResult('{"package.json":{"dep":"^1.0.1"}}')
+      if (args.includes('ncu')) return bufferedResult('{"package.json":{"dep":"^1.0.1"}}', 0, 'ncu warning\n')
       if (args.includes('view')) return bufferedResult('{"1.0.1":"2026-06-17T12:00:00.000Z"}')
       throw new Error(`Unexpected buffered command: ${spec.command} ${(spec.args ?? []).join(' ')}`)
     })
@@ -930,11 +925,10 @@ describe('upgrade cooldown', () => {
       }
 
       if (args.includes('view')) {
-        return bufferedResult([
+        return bufferedResult(JSON.stringify({
+          '1.2.0': '2026-05-01T12:00:00.000Z',
+        }), 0, [
           'npm warn Unknown project config "auto-install-peers".',
-          JSON.stringify({
-            '1.2.0': '2026-05-01T12:00:00.000Z',
-          }),
           'npm warn Unknown project config "strict-peer-dependencies".',
         ].join('\n'))
       }
@@ -1181,7 +1175,7 @@ describe('upgrade failure and empty paths', () => {
       return args.includes('outdated') ? bufferedResult('outdated failed', 2) : bufferedResult('{}')
     })
     await expect(runUpgradeEngine({ cwd: root, config: mergeConfig() }, ['--yes', '--no-cooldown']))
-      .rejects.toThrow('pnpm outdated')
+      .rejects.toThrow('outdated --format json --recursive')
 
     processMocks.runCommandBuffered.mockImplementation(async (spec: CommandSpec) => {
       const args = spec.args ?? []
@@ -1189,6 +1183,46 @@ describe('upgrade failure and empty paths', () => {
     })
     await expect(runUpgradeEngine({ cwd: root, config: mergeConfig() }, ['--yes', '--no-cooldown']))
       .rejects.toThrow('Command failed')
+  })
+
+  it('reports the command, exit code, and stderr when outdated fails without JSON', async () => {
+    const root = await createTempRoot()
+    await writeFile(path.join(root, 'package.json'), JSON.stringify({}))
+    processMocks.runCommandBuffered.mockImplementation(async (spec: CommandSpec) => (
+      (spec.args ?? []).includes('outdated')
+        ? bufferedResult('', 1, 'TypeError [ERR_UNKNOWN_FILE_EXTENSION]: Unknown file extension ".exe"')
+        : bufferedResult('{}')
+    ))
+
+    const error = await runUpgradeEngine({ cwd: root, config: mergeConfig() }, ['--yes', '--no-cooldown'])
+      .then(() => null, (reason: Error) => reason)
+
+    expect(error?.message).toContain('Command failed:')
+    expect(error?.message).toContain('outdated --format json --recursive')
+    expect(error?.message).toContain('Exit code: 1')
+    expect(error?.message).toContain('ERR_UNKNOWN_FILE_EXTENSION')
+    expect(error?.message).not.toContain('Unexpected token')
+  })
+
+  it('reports command diagnostics when outdated or ncu returns invalid JSON', async () => {
+    const root = await createTempRoot()
+    await writeFile(path.join(root, 'package.json'), JSON.stringify({}))
+
+    processMocks.runCommandBuffered.mockImplementation(async (spec: CommandSpec) => (
+      (spec.args ?? []).includes('outdated')
+        ? bufferedResult('not json', 1, 'outdated warning')
+        : bufferedResult('{}')
+    ))
+    await expect(runUpgradeEngine({ cwd: root, config: mergeConfig() }, ['--yes', '--no-cooldown']))
+      .rejects.toThrow('Exit code: 1')
+
+    processMocks.runCommandBuffered.mockImplementation(async (spec: CommandSpec) => (
+      (spec.args ?? []).includes('ncu')
+        ? bufferedResult('not json', 0, 'ncu warning')
+        : bufferedResult('{}')
+    ))
+    await expect(runUpgradeEngine({ cwd: root, config: mergeConfig() }, ['--yes', '--no-cooldown']))
+      .rejects.toThrow('Exit code: 0')
   })
 
   it('wraps install failures after manifest updates', async () => {

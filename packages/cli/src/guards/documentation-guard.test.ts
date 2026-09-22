@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import type { DocumentationConfig } from '../config.js'
 import { checkDocumentation, validateDocumentationConfig } from './documentation-guard.js'
@@ -10,6 +10,7 @@ import { checkDocumentation, validateDocumentationConfig } from './documentation
 const roots: string[] = []
 
 afterEach(() => {
+  vi.restoreAllMocks()
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true })
 })
 
@@ -119,6 +120,15 @@ describe('documentation guard', () => {
       expect.stringContaining('document is unreachable'),
       expect.stringContaining('heading jumps'),
     ]))
+  })
+
+  it('rejects unsafe parent links on non-Windows platforms', () => {
+    vi.spyOn(process, 'platform', 'get').mockReturnValue('linux')
+    const errors = checkDocumentation(corpus({
+      'README.md': '# Project\n\n[Outside](../outside.md)\n',
+    }), { files: ['README.md'] })
+
+    expect(errors).toEqual([expect.stringContaining('broken or unsafe local link')])
   })
 
   it('reports collection metadata, index, and paired-document failures', () => {

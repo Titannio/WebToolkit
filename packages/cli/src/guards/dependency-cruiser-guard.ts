@@ -53,7 +53,14 @@ export function resolveDependencyCruiserBin(options: DependencyCruiserGuardOptio
   const readFile = options.readFile ?? readFileSync
   const searchStart = options.searchStart ?? path.dirname(fileURLToPath(import.meta.url))
   const packageRoot = findDependencyCruiserPackageRoot(searchStart, exists, readFile)
-  const binPath = path.join(packageRoot, 'bin', 'dependency-cruise.mjs')
+  const manifest = JSON.parse(readFile(path.join(packageRoot, 'package.json'), 'utf8')) as {
+    bin?: Record<string, unknown>
+  }
+  const bin = manifest.bin?.['dependency-cruiser']
+  if (typeof bin !== 'string') {
+    throw new Error('dependency-cruiser package does not declare its binary.')
+  }
+  const binPath = path.join(packageRoot, bin)
 
   if (!exists(binPath)) {
     throw new Error(`dependency-cruiser binary not found at ${binPath}.`)

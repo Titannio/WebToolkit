@@ -4,6 +4,8 @@ import path from 'node:path'
 export type CommandResult = {
   code: number
   output: string
+  stdout: string
+  stderr: string
 }
 
 export type CommandSpec = {
@@ -28,7 +30,9 @@ export function buildPackageManagerCommand(packageManager: string, args: string[
   const npmExecPath = process.env.npm_execpath
 
   if (npmExecPath && packageManager === 'pnpm') {
-    return { command: process.execPath, args: [npmExecPath, ...args] }
+    return /\.(?:c|m)?js$/iu.test(npmExecPath)
+      ? { command: process.execPath, args: [npmExecPath, ...args] }
+      : { command: npmExecPath, args }
   }
 
   return {
@@ -94,16 +98,22 @@ export function runCommandBuffered(spec: CommandSpec, rootDir: string): Promise<
   })
 
   let output = ''
+  let stdout = ''
+  let stderr = ''
   child.stdout?.on('data', (chunk: Buffer) => {
-    output += chunk.toString()
+    const text = chunk.toString()
+    stdout += text
+    output += text
   })
   child.stderr?.on('data', (chunk: Buffer) => {
-    output += chunk.toString()
+    const text = chunk.toString()
+    stderr += text
+    output += text
   })
 
   return new Promise((resolve, reject) => {
     child.on('error', reject)
-    child.on('close', (code) => resolve({ code: code ?? 1, output }))
+    child.on('close', (code) => resolve({ code: code ?? 1, output, stdout, stderr }))
   })
 }
 

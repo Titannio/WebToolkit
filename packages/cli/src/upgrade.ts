@@ -174,46 +174,6 @@ export function normalizeNcuJson(raw: string): WorkspaceUpdates {
   ) as WorkspaceUpdates)
 }
 
-export function parseJsonObjectFromCommandOutput(raw: string): Record<string, unknown> {
-  const start = raw.indexOf('{')
-  if (start === -1) throw new Error('No JSON object found.')
-
-  let depth = 0
-  let inString = false
-  let escaping = false
-
-  for (let index = start; index < raw.length; index += 1) {
-    const character = raw[index]
-
-    if (escaping) {
-      escaping = false
-      continue
-    }
-
-    if (character === '\\') {
-      escaping = inString
-      continue
-    }
-
-    if (character === '"') {
-      inString = !inString
-      continue
-    }
-
-    if (inString) continue
-
-    if (character === '{') depth += 1
-    if (character === '}') {
-      depth -= 1
-      if (depth === 0) {
-        return JSON.parse(raw.slice(start, index + 1)) as Record<string, unknown>
-      }
-    }
-  }
-
-  throw new Error('Unterminated JSON object.')
-}
-
 export function toWorkspaceManifestPath(location: string, workspaceRoot: string): string | null {
   const relativeLocation = path.relative(workspaceRoot, location)
   if (relativeLocation.startsWith('..') || path.isAbsolute(relativeLocation)) return null
@@ -426,9 +386,18 @@ async function runBufferedPm(runtime: Runtime, args: string[], rejectOnNonZero =
   const command = buildPackageManagerCommand(runtime.config.packageManager, args)
   const result = await runCommandBuffered(command, runtime.cwd)
   if (rejectOnNonZero && result.code !== 0) {
-    throw new Error(`Command failed: ${formatCommand(command.command, command.args)}\n${result.output}`)
+    throw new Error(formatCommandFailure(command, result))
   }
   return result
+}
+
+function formatCommandFailure(command: ReturnType<typeof buildPackageManagerCommand>, result: CommandResult): string {
+  const diagnostic = [result.stderr.trim(), result.stdout.trim()].filter(Boolean).join('\n') || result.output.trim()
+  return [
+    `Command failed: ${formatCommand(command.command, command.args)}`,
+    `Exit code: ${result.code}`,
+    ...(diagnostic ? [`Diagnostic:\n${diagnostic}`] : []),
+  ].join('\n')
 }
 
 function runInheritedPm(
@@ -445,18 +414,30 @@ function runInheritedPm(
 
 async function collectNcuUpdates(runtime: Runtime, target: TargetMode): Promise<WorkspaceUpdates> {
   const args = ['exec', 'ncu', '--jsonUpgraded', '--workspaces', '--root', '--target', target]
-
   const result = await runBufferedPm(runtime, args)
-  return normalizeNcuJson(result.output)
+  try {
+    return normalizeNcuJson(result.stdout)
+  } catch (error) {
+    throw new Error(formatCommandFailure(buildPackageManagerCommand(runtime.config.packageManager, args), result), { cause: error })
+  }
 }
 
 async function collectOutdatedUpdates(runtime: Runtime, target: TargetMode): Promise<WorkspaceUpdates> {
-  const result = await runBufferedPm(runtime, ['outdated', '--format', 'json', '--recursive'], false)
+  const args = ['outdated', '--format', 'json', '--recursive']
+  const command = buildPackageManagerCommand(runtime.config.packageManager, args)
+  const result = await runCommandBuffered(command, runtime.cwd)
   if (result.code !== 0 && result.code !== 1) {
-    throw new Error(`Command failed: pnpm outdated --format json --recursive\n${result.output}`)
+    throw new Error(formatCommandFailure(command, result))
   }
 
-  const rawUpdates = normalizePnpmOutdatedJson(result.output, runtime.cwd, target)
+  if (result.code === 1 && !result.stdout.trim()) throw new Error(formatCommandFailure(command, result))
+
+  let rawUpdates: WorkspaceUpdates
+  try {
+    rawUpdates = normalizePnpmOutdatedJson(result.stdout, runtime.cwd, target)
+  } catch (error) {
+    throw new Error(formatCommandFailure(command, result), { cause: error })
+  }
   const versionsByFile = await getManifestVersionsByFile(rawUpdates, runtime.cwd)
 
   return sortUpdatesByFile(Object.fromEntries(
@@ -517,21 +498,22 @@ export function buildProtectedUpgradePlans(runtime: Runtime, entries: UpgradeEnt
 
 export async function getReleaseDate(runtime: Runtime, packageName: string, version: string): Promise<Date | null> {
   const command = process.platform === 'win32' ? 'npm.cmd' : 'npm'
-  const result = await runCommandBuffered({ command, args: ['view', packageName, 'time', '--json'] }, runtime.cwd)
+  const commandSpec = { command, args: ['view', packageName, 'time', '--json'] }
+  const result = await runCommandBuffered(commandSpec, runtime.cwd)
 
-  if (result.code !== 0 || !result.output.trim()) {
-    throw new Error(`Unable to read npm release metadata for "${packageName}".`)
+  if (result.code !== 0 || !result.stdout.trim()) {
+    throw new Error(`Unable to read npm release metadata for "${packageName}".\n${formatCommandFailure(commandSpec, result)}`)
   }
 
   try {
-    const times = parseJsonObjectFromCommandOutput(result.output)
+    const times = JSON.parse(result.stdout) as Record<string, unknown>
     const releaseTime = times[version]
     if (typeof releaseTime !== 'string') return null
     if (!releaseTime) return null
     const releaseDate = new Date(releaseTime)
     return Number.isNaN(releaseDate.getTime()) ? null : releaseDate
-  } catch {
-    throw new Error(`Invalid npm release metadata for "${packageName}".`)
+  } catch (error) {
+    throw new Error(`Invalid npm release metadata for "${packageName}".\n${formatCommandFailure(commandSpec, result)}`, { cause: error })
   }
 }
 

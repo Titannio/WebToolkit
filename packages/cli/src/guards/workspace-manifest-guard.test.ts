@@ -3,7 +3,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { WorkspaceManifestGuardConfig } from '../config.js'
-import { runWorkspaceManifestGuard } from './workspace-manifest-guard.js'
+import { inspectWorkspaceManifests, runWorkspaceManifestGuard } from './workspace-manifest-guard.js'
 
 const roots: string[] = []
 const config: WorkspaceManifestGuardConfig = {
@@ -61,6 +61,24 @@ afterEach(async () => {
 })
 
 describe('workspace manifest guard', () => {
+  it('sorts same-file issues with and without dependency names', () => {
+    const named = {
+      absoluteDirectory: '/repo/apps/web',
+      filePath: 'apps/web/package.json',
+      manifest: { name: '@acme/duplicate' },
+    }
+    const unnamed = {
+      ...named,
+      manifest: {},
+    }
+    const guardConfig = { packageRoots: [], requireWorkspaceProtocol: true, peerRequirements: [] }
+
+    for (const manifests of [[named, named, unnamed], [unnamed, named, named]]) {
+      expect(inspectWorkspaceManifests('/repo', manifests, guardConfig).map((issue) => issue.dependency))
+        .toEqual([undefined, '@acme/duplicate'])
+    }
+  })
+
   it('accepts a compliant multi-package workspace and peer-plus-dev provider setup', async () => {
     const directory = await compliantWorkspace()
     vi.spyOn(console, 'info').mockImplementation(() => undefined)

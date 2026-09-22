@@ -6,13 +6,17 @@ import { resolveDependencyCruiserBin, runDependencyCruiserGuard } from './depend
 describe('dependency cruiser guard', () => {
   const cliRoot = path.join('repo', 'node_modules', '@titannio', 'webtoolkit-cli')
   const packageRoot = path.join(cliRoot, 'node_modules', 'dependency-cruiser')
-  const binPath = path.join(packageRoot, 'bin', 'dependency-cruise.mjs')
+  const binPath = path.join(packageRoot, 'bin', 'dependency-cruiser.mjs')
+  const manifest = JSON.stringify({
+    name: 'dependency-cruiser',
+    bin: { 'dependency-cruiser': 'bin/dependency-cruiser.mjs' },
+  })
 
   it('resolves the dependency-cruiser binary from the package installed with the CLI', () => {
     const actual = resolveDependencyCruiserBin({
       searchStart: path.join(cliRoot, 'dist', 'guards'),
       exists: (target) => target === path.join(packageRoot, 'package.json') || target === binPath,
-      readFile: () => JSON.stringify({ name: 'dependency-cruiser' }),
+      readFile: () => manifest,
     })
 
     expect(actual).toBe(binPath)
@@ -21,17 +25,27 @@ describe('dependency cruiser guard', () => {
   it('resolves a direct package root and rejects a missing binary', () => {
     const directRoot = path.join('repo', 'dependency-cruiser')
     const directBin = path.join(directRoot, 'bin', 'dependency-cruise.mjs')
+    const directManifest = JSON.stringify({
+      name: 'dependency-cruiser',
+      bin: { 'dependency-cruiser': 'bin/dependency-cruise.mjs' },
+    })
     expect(resolveDependencyCruiserBin({
       searchStart: directRoot,
       exists: (target) => target === path.join(directRoot, 'package.json') || target === directBin,
-      readFile: () => JSON.stringify({ name: 'dependency-cruiser' }),
+      readFile: () => directManifest,
     })).toBe(directBin)
 
     expect(() => resolveDependencyCruiserBin({
       searchStart: directRoot,
       exists: (target) => target === path.join(directRoot, 'package.json'),
-      readFile: () => JSON.stringify({ name: 'dependency-cruiser' }),
+      readFile: () => directManifest,
     })).toThrow('binary not found')
+
+    expect(() => resolveDependencyCruiserBin({
+      searchStart: directRoot,
+      exists: (target) => target === path.join(directRoot, 'package.json'),
+      readFile: () => JSON.stringify({ name: 'dependency-cruiser' }),
+    })).toThrow('does not declare its binary')
   })
 
   it('ignores unrelated package manifests while walking through node_modules', () => {
@@ -65,7 +79,7 @@ describe('dependency cruiser guard', () => {
       execPath: '/node',
       searchStart: path.join(cliRoot, 'dist', 'guards'),
       exists: (target) => target === path.join(packageRoot, 'package.json') || target === binPath,
-      readFile: () => JSON.stringify({ name: 'dependency-cruiser' }),
+      readFile: () => manifest,
       spawn,
     })
 
@@ -100,7 +114,7 @@ describe('dependency cruiser guard', () => {
     const options = {
       searchStart: path.join(cliRoot, 'dist', 'guards'),
       exists: (target: string) => target === path.join(packageRoot, 'package.json') || target === binPath,
-      readFile: () => JSON.stringify({ name: 'dependency-cruiser' }),
+      readFile: () => manifest,
     }
     expect(() => runDependencyCruiserGuard([], {
       ...options,
@@ -113,7 +127,7 @@ describe('dependency cruiser guard', () => {
   })
 
   it('uses the installed dependency and process defaults', () => {
-    expect(resolveDependencyCruiserBin()).toMatch(/dependency-cruise\.mjs$/u)
+    expect(resolveDependencyCruiserBin()).toMatch(/dependency-cruis(?:e|er)\.mjs$/u)
     expect(runDependencyCruiserGuard(['--version'])).toBe(0)
   })
 })

@@ -19,6 +19,7 @@ import { runCommandBuffered } from './process.js'
 import { executeBuiltinGuard } from './guard-runner.js'
 
 const runtimeWithConfig = (cwd: string, config: Parameters<typeof mergeConfig>[0]) => ({ cwd, config: mergeConfig(config) })
+const commandResult = (output: string, code = 0) => ({ code, output, stdout: output, stderr: '' })
 
 afterEach(() => {
   vi.restoreAllMocks()
@@ -28,7 +29,7 @@ afterEach(() => {
 
 describe('validate', () => {
   it('executes all steps and optional post-steps when successful', async () => {
-    vi.mocked(runCommandBuffered).mockResolvedValue({ code: 0, output: 'ok' })
+    vi.mocked(runCommandBuffered).mockResolvedValue(commandResult('ok'))
 
     await runValidateEngine(runtimeWithConfig('/repo', {
       packageManager: 'pnpm',
@@ -52,7 +53,7 @@ describe('validate', () => {
   })
 
   it('throws when a step command exits with non-zero code', async () => {
-    vi.mocked(runCommandBuffered).mockResolvedValueOnce({ code: 1, output: 'failed' })
+    vi.mocked(runCommandBuffered).mockResolvedValueOnce(commandResult('failed', 1))
 
     await expect(runValidateEngine(runtimeWithConfig('/repo', {
       packageManager: 'pnpm',
@@ -65,7 +66,7 @@ describe('validate', () => {
   })
 
   it('accepts steps with explicit args and empty output on success', async () => {
-    vi.mocked(runCommandBuffered).mockResolvedValue({ code: 0, output: '' })
+    vi.mocked(runCommandBuffered).mockResolvedValue(commandResult(''))
 
     await runValidateEngine(runtimeWithConfig('/repo', {
       packageManager: 'pnpm',
@@ -83,7 +84,7 @@ describe('validate', () => {
   })
 
   it('falls back to command text when a failing step has no output', async () => {
-    vi.mocked(runCommandBuffered).mockResolvedValueOnce({ code: 1, output: '' })
+    vi.mocked(runCommandBuffered).mockResolvedValueOnce(commandResult('', 1))
 
     await expect(runValidateEngine(runtimeWithConfig('/repo', {
       packageManager: 'pnpm',
@@ -94,7 +95,7 @@ describe('validate', () => {
   })
 
   it('passes no args when step command has no args', async () => {
-    vi.mocked(runCommandBuffered).mockResolvedValue({ code: 0, output: '' })
+    vi.mocked(runCommandBuffered).mockResolvedValue(commandResult(''))
 
     await runValidateEngine(runtimeWithConfig('/repo', {
       packageManager: 'pnpm',
@@ -113,7 +114,7 @@ describe('validate', () => {
 
   it('shows fallback command text when failing without output', async () => {
     const consoleInfo = vi.spyOn(console, 'info').mockImplementation(() => undefined)
-    vi.mocked(runCommandBuffered).mockResolvedValueOnce({ code: 1, output: '' })
+    vi.mocked(runCommandBuffered).mockResolvedValueOnce(commandResult('', 1))
 
     await expect(runValidateEngine(runtimeWithConfig('/repo', {
       packageManager: 'pnpm',
@@ -128,7 +129,7 @@ describe('validate', () => {
 
   it('falls back to command text when failing without args and without output', async () => {
     const consoleInfo = vi.spyOn(console, 'info').mockImplementation(() => undefined)
-    vi.mocked(runCommandBuffered).mockResolvedValueOnce({ code: 1, output: '' })
+    vi.mocked(runCommandBuffered).mockResolvedValueOnce(commandResult('', 1))
 
     await expect(runValidateEngine(runtimeWithConfig('/repo', {
       packageManager: 'pnpm',

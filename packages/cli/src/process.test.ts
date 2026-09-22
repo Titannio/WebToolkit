@@ -73,7 +73,7 @@ describe('process helpers', () => {
     expect(formatCommand('node', ['plain', 'two words', 'a"b'])).toBe('node plain "two words" "a\\"b"')
   })
 
-  it('builds package-manager commands using npm_execpath when available', () => {
+  it('runs JavaScript npm_execpath launchers through Node', () => {
     const platform = vi.spyOn(process, 'platform', 'get').mockReturnValue('win32')
     const npmExecPath = '/tmp/npm.cjs'
 
@@ -87,6 +87,21 @@ describe('process helpers', () => {
     } finally {
       process.env.npm_execpath = original
       platform.mockRestore()
+    }
+  })
+
+  it('runs native npm_execpath executables directly', () => {
+    const npmExecPath = 'C:\\Program Files\\pnpm\\pnpm-native.exe'
+    const original = process.env.npm_execpath
+    process.env.npm_execpath = npmExecPath
+    try {
+      expect(buildPackageManagerCommand('pnpm', ['--version'])).toEqual({
+        command: npmExecPath,
+        args: ['--version'],
+      })
+    } finally {
+      if (original === undefined) delete process.env.npm_execpath
+      else process.env.npm_execpath = original
     }
   })
 
@@ -179,7 +194,12 @@ describe('process execution helpers', () => {
 
     const result = await runCommandBuffered({ command: 'node', args: ['-v'] }, '/repo')
 
-    expect(result).toEqual({ code: 0, output: 'hello world' })
+    expect(result).toEqual({
+      code: 0,
+      output: 'hello world',
+      stdout: 'hello ',
+      stderr: 'world',
+    })
     expect(spawned).toHaveLength(1)
     expect(vi.mocked(spawn)).toHaveBeenCalledWith('node', ['-v'], {
       cwd: '/repo',
@@ -200,7 +220,7 @@ describe('process execution helpers', () => {
       command: 'node',
       cwd: path.resolve('/absolute'),
       env: { FORCE_COLOR: '0', CUSTOM: 'yes' },
-    }, '/repo')).resolves.toEqual({ code: 1, output: '' })
+    }, '/repo')).resolves.toEqual({ code: 1, output: '', stdout: '', stderr: '' })
     expect(spawn).toHaveBeenCalledWith('node', [], expect.objectContaining({
       cwd: path.resolve('/absolute'),
       env: expect.objectContaining({ FORCE_COLOR: '0', CUSTOM: 'yes' }),
